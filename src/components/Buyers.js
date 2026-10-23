@@ -1,31 +1,20 @@
 import { useState } from "react";
+import { useSelector } from "react-redux";
 
 import {
-  Box,
-  Container,
-  Typography,
-  Card,
-  CardContent,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Avatar,
-  Chip,
-  Button,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Alert
+  Box, Container, Typography, Card, CardContent,
+  Table, TableBody, TableCell, TableContainer,
+  TableHead, TableRow, Avatar, Chip, Button,
+  Dialog, DialogTitle, DialogContent,
+  DialogActions, TextField, Alert
 } from "@mui/material";
 
 import BuyerForm from "./BuyerForm";
 
 function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
+
+  const role = useSelector((state) => state.auth.role);
+  const isAdmin = role === "Admin";
 
   const [editingIndex, setEditingIndex] = useState(null);
 
@@ -37,15 +26,14 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
 
   const [error, setError] = useState("");
 
-  // Mask CNIC for privacy
-  const maskCnic = (cnic) => {
-    if (!cnic) return "Not available";
+  const maskCnic = (cnic) =>
+    cnic
+      ? `*****-*******-${String(cnic).slice(-1)}`
+      : "Not available";
 
-    return `*****-*******-${String(cnic).slice(-1)}`;
-  };
-
-  // Open edit form
   const handleEdit = (buyer, index) => {
+    if (!isAdmin) return;
+
     setEditingIndex(index);
 
     setEditForm({
@@ -57,14 +45,13 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
     setError("");
   };
 
-  // Close edit form
   const closeEdit = () => {
     setEditingIndex(null);
     setError("");
   };
 
-  // Update buyer information
   const handleUpdate = () => {
+    if (!isAdmin || editingIndex === null) return;
 
     const name = editForm.name.trim();
     const phone = editForm.phone.trim();
@@ -98,8 +85,8 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
     closeEdit();
   };
 
-  // Delete a buyer
   const handleDelete = (index) => {
+    if (!isAdmin) return;
 
     const buyer = buyers[index];
 
@@ -128,8 +115,6 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
     >
       <Container maxWidth="xl">
 
-        {/* Page Heading */}
-
         <Box sx={{ mb: 4 }}>
           <Typography
             variant="h4"
@@ -150,16 +135,12 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
           </Typography>
         </Box>
 
-        {/* Registration Form */}
-
         <Box sx={{ mb: 4 }}>
           <BuyerForm
             buyers={buyers}
             onSaveBuyer={onSaveBuyer}
           />
         </Box>
-
-        {/* Registered Buyers Heading */}
 
         <Box
           sx={{
@@ -195,8 +176,6 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
           />
         </Box>
 
-        {/* Empty State */}
-
         {buyers.length === 0 && (
           <Card
             sx={{
@@ -212,8 +191,6 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
             </Typography>
           </Card>
         )}
-
-        {/* MOBILE VIEW: Buyer Cards */}
 
         {buyers.length > 0 && (
           <Box
@@ -232,13 +209,10 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
                 sx={{
                   borderRadius: 3,
                   border: "1px solid #e3ebe4",
-                  boxShadow:
-                    "0 4px 18px rgba(0,0,0,0.04)"
+                  boxShadow: "0 4px 18px rgba(0,0,0,0.04)"
                 }}
               >
                 <CardContent sx={{ p: 2.5 }}>
-
-                  {/* Buyer Photo and Name */}
 
                   <Box
                     sx={{
@@ -277,8 +251,6 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
                       />
                     </Box>
                   </Box>
-
-                  {/* Buyer Details */}
 
                   <Box
                     sx={{
@@ -331,49 +303,47 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
                     </Typography>
                   </Box>
 
-                  {/* Mobile Action Buttons */}
-
-                  <Box
-                    sx={{
-                      display: "flex",
-                      gap: 1.5
-                    }}
-                  >
-                    <Button
-                      variant="outlined"
-                      fullWidth
-                      onClick={() => handleEdit(buyer, index)}
+                  {isAdmin && (
+                    <Box
                       sx={{
-                        textTransform: "none",
-                        color: "#1b5e20",
-                        borderColor: "#1b5e20",
-                        fontWeight: 600
+                        display: "flex",
+                        gap: 1.5
                       }}
                     >
-                      Edit
-                    </Button>
+                      <Button
+                        variant="outlined"
+                        fullWidth
+                        onClick={() => handleEdit(buyer, index)}
+                        sx={{
+                          textTransform: "none",
+                          color: "#1b5e20",
+                          borderColor: "#1b5e20",
+                          fontWeight: 600
+                        }}
+                      >
+                        Edit
+                      </Button>
 
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      fullWidth
-                      onClick={() => handleDelete(index)}
-                      sx={{
-                        textTransform: "none",
-                        fontWeight: 600
-                      }}
-                    >
-                      Delete
-                    </Button>
-                  </Box>
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        fullWidth
+                        onClick={() => handleDelete(index)}
+                        sx={{
+                          textTransform: "none",
+                          fontWeight: 600
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    </Box>
+                  )}
 
                 </CardContent>
               </Card>
             ))}
           </Box>
         )}
-
-        {/* DESKTOP VIEW: Buyers Table */}
 
         {buyers.length > 0 && (
           <Card
@@ -384,13 +354,15 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
               },
               borderRadius: 3,
               border: "1px solid #e3ebe4",
-              boxShadow:
-                "0 4px 18px rgba(0,0,0,0.05)"
+              boxShadow: "0 4px 18px rgba(0,0,0,0.05)"
             }}
           >
             <TableContainer>
-              <Table sx={{ minWidth: 950 }}>
-
+              <Table
+                sx={{
+                  minWidth: isAdmin ? 950 : 800
+                }}
+              >
                 <TableHead sx={{ bgcolor: "#e8f5e9" }}>
                   <TableRow>
                     <TableCell><b>Photo</b></TableCell>
@@ -399,7 +371,12 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
                     <TableCell><b>Business / Mill</b></TableCell>
                     <TableCell><b>CNIC</b></TableCell>
                     <TableCell><b>Status</b></TableCell>
-                    <TableCell><b>Actions</b></TableCell>
+
+                    {isAdmin && (
+                      <TableCell>
+                        <b>Actions</b>
+                      </TableCell>
+                    )}
                   </TableRow>
                 </TableHead>
 
@@ -446,57 +423,55 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
                         />
                       </TableCell>
 
-                      <TableCell>
-                        <Box
-                          sx={{
-                            display: "flex",
-                            gap: 1
-                          }}
-                        >
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() =>
-                              handleEdit(buyer, index)
-                            }
+                      {isAdmin && (
+                        <TableCell>
+                          <Box
                             sx={{
-                              textTransform: "none",
-                              color: "#1b5e20",
-                              borderColor: "#1b5e20"
+                              display: "flex",
+                              gap: 1
                             }}
                           >
-                            Edit
-                          </Button>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() =>
+                                handleEdit(buyer, index)
+                              }
+                              sx={{
+                                textTransform: "none",
+                                color: "#1b5e20",
+                                borderColor: "#1b5e20"
+                              }}
+                            >
+                              Edit
+                            </Button>
 
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            color="error"
-                            onClick={() =>
-                              handleDelete(index)
-                            }
-                            sx={{
-                              textTransform: "none"
-                            }}
-                          >
-                            Delete
-                          </Button>
-                        </Box>
-                      </TableCell>
-
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              color="error"
+                              onClick={() =>
+                                handleDelete(index)
+                              }
+                              sx={{
+                                textTransform: "none"
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </Box>
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
-
               </Table>
             </TableContainer>
           </Card>
         )}
 
-        {/* Edit Buyer Dialog */}
-
         <Dialog
-          open={editingIndex !== null}
+          open={isAdmin && editingIndex !== null}
           onClose={closeEdit}
           fullWidth
           maxWidth="sm"
@@ -506,7 +481,6 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
           </DialogTitle>
 
           <DialogContent>
-
             {error && (
               <Alert severity="error" sx={{ mb: 2 }}>
                 {error}
@@ -562,7 +536,6 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
             >
               CNIC and photo remain unchanged.
             </Typography>
-
           </DialogContent>
 
           <DialogActions sx={{ p: 2 }}>
@@ -587,7 +560,6 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
               Save Changes
             </Button>
           </DialogActions>
-
         </Dialog>
 
       </Container>

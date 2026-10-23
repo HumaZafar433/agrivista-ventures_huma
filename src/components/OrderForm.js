@@ -28,10 +28,18 @@ function OrderForm({
   const [buyerId, setBuyerId] = useState("");
   const [cropId, setCropId] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [pricePerKg, setPricePerKg] = useState("");
   const [orderDate, setOrderDate] = useState(todayIso());
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  const formatMoney = (amount) => {
+    return `Rs. ${Number(amount).toLocaleString("en-PK", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    })}`;
+  };
 
   const selectedBuyer = buyers.find(
     (buyer) => String(buyer.id) === String(buyerId)
@@ -55,8 +63,22 @@ function OrderForm({
     : 0;
 
   const availableStock = selectedCrop
-    ? Math.max(0, Number(selectedCrop.harvestQty) - bookedQuantity)
+    ? Math.max(
+        0,
+        Number(selectedCrop.harvestQty) - bookedQuantity
+      )
     : 0;
+
+  const orderQuantity = Number(quantity);
+  const sellingPrice = Number(pricePerKg);
+
+  const totalAmount =
+    orderQuantity > 0 &&
+    sellingPrice > 0 &&
+    Number.isFinite(orderQuantity) &&
+    Number.isFinite(sellingPrice)
+      ? Math.round(orderQuantity * sellingPrice * 100) / 100
+      : 0;
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -74,8 +96,6 @@ function OrderForm({
       return;
     }
 
-    const orderQuantity = Number(quantity);
-
     if (
       !Number.isInteger(orderQuantity) ||
       orderQuantity <= 0
@@ -91,6 +111,16 @@ function OrderForm({
       return;
     }
 
+    if (
+      pricePerKg.trim() === "" ||
+      !Number.isFinite(sellingPrice) ||
+      sellingPrice <= 0 ||
+      !Number.isFinite(totalAmount)
+    ) {
+      setError("Please enter a valid selling price.");
+      return;
+    }
+
     if (!orderDate) {
       setError("Please select an order date.");
       return;
@@ -98,12 +128,18 @@ function OrderForm({
 
     const newOrder = {
       id: Date.now(),
+
       buyerId: selectedBuyer.id,
       name: selectedBuyer.name,
+
       cropId: selectedCrop.id,
       crop: selectedCrop.name,
       field: selectedCrop.field,
+
       quantity: orderQuantity,
+      pricePerKg: sellingPrice,
+      totalAmount: totalAmount,
+
       orderDate: orderDate,
       status: "Pending"
     };
@@ -113,6 +149,7 @@ function OrderForm({
     setBuyerId("");
     setCropId("");
     setQuantity("");
+    setPricePerKg("");
     setOrderDate(todayIso());
 
     setSuccess("Order placed successfully!");
@@ -128,7 +165,6 @@ function OrderForm({
     >
       <Container maxWidth="md">
 
-
         <Box sx={{ mb: 4 }}>
           <Typography
             variant="h4"
@@ -142,7 +178,6 @@ function OrderForm({
             Create crop orders for registered buyers.
           </Typography>
         </Box>
-
 
         <Card
           sx={{
@@ -177,7 +212,10 @@ function OrderForm({
               </Box>
 
               <Box>
-                <Typography variant="h6" fontWeight="bold">
+                <Typography
+                  variant="h6"
+                  fontWeight="bold"
+                >
                   Order Information
                 </Typography>
 
@@ -214,7 +252,6 @@ function OrderForm({
               }}
             >
 
-
               <TextField
                 select
                 label="Select Registered Buyer"
@@ -243,8 +280,6 @@ function OrderForm({
                 </Alert>
               )}
 
-            
-
               <TextField
                 select
                 label="Select Crop"
@@ -266,8 +301,6 @@ function OrderForm({
                 ))}
               </TextField>
 
-    
-
               {selectedCrop && (
                 <Box
                   sx={{
@@ -285,8 +318,6 @@ function OrderForm({
                 </Box>
               )}
 
-        
-
               <TextField
                 label="Order Quantity (kg)"
                 type="number"
@@ -296,29 +327,91 @@ function OrderForm({
                   setSuccess("");
                 }}
                 slotProps={{
-                  htmlInput: { min: 1, step: 1 }
+                  htmlInput: {
+                    min: 1,
+                    step: 1
+                  }
                 }}
                 fullWidth
                 required
               />
 
-        
+              <TextField
+                label="Selling Price per kg (PKR)"
+                type="number"
+                placeholder="e.g. 120"
+                value={pricePerKg}
+                onChange={(e) => {
+                  setPricePerKg(e.target.value);
+                  setSuccess("");
+                }}
+                slotProps={{
+                  htmlInput: {
+                    min: 0.01,
+                    step: "0.01"
+                  }
+                }}
+                fullWidth
+                required
+              />
+
+              <Box
+                sx={{
+                  bgcolor: "#f0f7f1",
+                  border: "1px solid #d5e8d7",
+                  borderRadius: 3,
+                  p: 3
+                }}
+              >
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mb: 1 }}
+                >
+                  Order Total
+                </Typography>
+
+                <Typography
+                  variant="h4"
+                  fontWeight={700}
+                  sx={{ color: "#1b5e20" }}
+                >
+                  {formatMoney(totalAmount)}
+                </Typography>
+
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mt: 1 }}
+                >
+                  {quantity || "0"} kg ×{" "}
+                  {formatMoney(
+                    sellingPrice > 0 && Number.isFinite(sellingPrice)
+                      ? sellingPrice
+                      : 0
+                  )}
+                  {" "}per kg
+                </Typography>
+              </Box>
 
               <TextField
                 label="Order Date"
                 type="date"
                 value={orderDate}
-                onChange={(e) => setOrderDate(e.target.value)}
+                onChange={(e) => {
+                  setOrderDate(e.target.value);
+                  setSuccess("");
+                }}
                 slotProps={{
-                  inputLabel: { shrink: true }
+                  inputLabel: {
+                    shrink: true
+                  }
                 }}
                 fullWidth
                 required
               />
 
               <Divider />
-
-    
 
               <Button
                 type="submit"

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSelector } from "react-redux";
 
 import {
   Box,
@@ -27,6 +28,9 @@ import {
 import { healthInfo } from "../data/seedData";
 
 function Crops({ crops, setCrops }) {
+
+  const role = useSelector((state) => state.auth.role);
+  const isAdmin = role === "Admin";
 
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState(null);
@@ -61,6 +65,10 @@ function Crops({ crops, setCrops }) {
   const handleSubmit = (e) => {
     e.preventDefault();
 
+    if (editingId !== null && !isAdmin) {
+      return;
+    }
+
     if (
       !form.name.trim() ||
       !form.field.trim() ||
@@ -83,7 +91,7 @@ function Crops({ crops, setCrops }) {
       return;
     }
 
-    if (editingId) {
+    if (editingId !== null) {
       setCrops(
         crops.map((crop) =>
           crop.id === editingId
@@ -111,6 +119,8 @@ function Crops({ crops, setCrops }) {
   };
 
   const handleEdit = (crop) => {
+    if (!isAdmin) return;
+
     setEditingId(crop.id);
 
     setForm({
@@ -125,6 +135,8 @@ function Crops({ crops, setCrops }) {
   };
 
   const handleDelete = (id) => {
+    if (!isAdmin) return;
+
     const confirmed = window.confirm(
       "Are you sure you want to delete this crop?"
     );
@@ -372,21 +384,25 @@ function Crops({ crops, setCrops }) {
                       Harvest Quantity: {crop.harvestQty} kg
                     </Typography>
 
-                    <Box sx={{ display: "flex", gap: 1 }}>
-                      <IconButton
-                        color="primary"
-                        onClick={() => handleEdit(crop)}
-                      >
-                        <FontAwesomeIcon icon={faPen} />
-                      </IconButton>
+                    {isAdmin && (
+                      <Box sx={{ display: "flex", gap: 1 }}>
+                        <IconButton
+                          color="primary"
+                          aria-label={`Edit ${crop.name}`}
+                          onClick={() => handleEdit(crop)}
+                        >
+                          <FontAwesomeIcon icon={faPen} />
+                        </IconButton>
 
-                      <IconButton
-                        color="error"
-                        onClick={() => handleDelete(crop.id)}
-                      >
-                        <FontAwesomeIcon icon={faTrash} />
-                      </IconButton>
-                    </Box>
+                        <IconButton
+                          color="error"
+                          aria-label={`Delete ${crop.name}`}
+                          onClick={() => handleDelete(crop.id)}
+                        >
+                          <FontAwesomeIcon icon={faTrash} />
+                        </IconButton>
+                      </Box>
+                    )}
 
                   </CardContent>
 

@@ -1,3 +1,5 @@
+import { useSelector } from "react-redux";
+
 import {
   Box,
   Typography,
@@ -14,10 +16,24 @@ import {
 
 function SupplierOrders({ orders = [], onMarkDelivered }) {
 
+  const role = useSelector((state) => state.auth.role);
+
+  const isAdmin = role === "Admin";
+
+
+  const handleMarkDelivered = (id) => {
+    if (!isAdmin) {
+      return;
+    }
+
+    if (typeof onMarkDelivered === "function") {
+      onMarkDelivered(id);
+    }
+  };
+
+
   return (
     <Box sx={{ width: "100%" }}>
-
-      {/* Heading */}
 
       <Box sx={{ mb: 3 }}>
         <Typography
@@ -33,7 +49,6 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
         </Typography>
       </Box>
 
-      {/* No Orders Message */}
 
       {orders.length === 0 && (
         <Paper
@@ -50,6 +65,7 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
           </Typography>
         </Paper>
       )}
+
 
       {/* MOBILE VIEW */}
 
@@ -75,8 +91,6 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
                 boxShadow: "0 4px 16px rgba(0,0,0,0.05)"
               }}
             >
-
-              {/* Buyer Name */}
 
               <Box
                 sx={{
@@ -108,7 +122,6 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
                 />
               </Box>
 
-              {/* Order Details */}
 
               <Box
                 sx={{
@@ -133,6 +146,7 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
                   {order.crop}
                 </Typography>
 
+
                 <Typography
                   variant="body2"
                   color="text.secondary"
@@ -147,6 +161,7 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
                   {order.quantity} kg
                 </Typography>
 
+
                 <Typography
                   variant="body2"
                   color="text.secondary"
@@ -160,25 +175,42 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
 
               </Box>
 
-              {/* Order Action */}
+
+              {/* MOBILE ORDER ACTION */}
 
               {order.status === "Pending" ? (
 
-                <Button
-                  fullWidth
-                  variant="contained"
-                  onClick={() => onMarkDelivered(order.id)}
-                  sx={{
-                    bgcolor: "#1b5e20",
-                    textTransform: "none",
-                    fontWeight: "bold",
-                    "&:hover": {
-                      bgcolor: "#12451a"
+                isAdmin ? (
+
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    onClick={() =>
+                      handleMarkDelivered(order.id)
                     }
-                  }}
-                >
-                  Mark Delivered
-                </Button>
+                    sx={{
+                      bgcolor: "#1b5e20",
+                      textTransform: "none",
+                      fontWeight: "bold",
+                      "&:hover": {
+                        bgcolor: "#12451a"
+                      }
+                    }}
+                  >
+                    Mark Delivered
+                  </Button>
+
+                ) : (
+
+                  <Typography
+                    color="warning.main"
+                    fontWeight={600}
+                    textAlign="center"
+                  >
+                    Pending — View Only
+                  </Typography>
+
+                )
 
               ) : (
 
@@ -197,6 +229,7 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
           ))}
         </Box>
       )}
+
 
       {/* DESKTOP VIEW */}
 
@@ -218,14 +251,32 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
 
             <TableHead sx={{ bgcolor: "#e8f5e9" }}>
               <TableRow>
-                <TableCell><b>Buyer Name</b></TableCell>
-                <TableCell><b>Crop</b></TableCell>
-                <TableCell><b>Quantity</b></TableCell>
-                <TableCell><b>Order Date</b></TableCell>
-                <TableCell><b>Status</b></TableCell>
-                <TableCell><b>Action</b></TableCell>
+                <TableCell>
+                  <b>Buyer Name</b>
+                </TableCell>
+
+                <TableCell>
+                  <b>Crop</b>
+                </TableCell>
+
+                <TableCell>
+                  <b>Quantity</b>
+                </TableCell>
+
+                <TableCell>
+                  <b>Order Date</b>
+                </TableCell>
+
+                <TableCell>
+                  <b>Status</b>
+                </TableCell>
+
+                <TableCell>
+                  <b>Action</b>
+                </TableCell>
               </TableRow>
             </TableHead>
+
 
             <TableBody>
 
@@ -261,21 +312,40 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
                     />
                   </TableCell>
 
+
+                  {/* DESKTOP ORDER ACTION */}
+
                   <TableCell>
 
                     {order.status === "Pending" ? (
 
-                      <Button
-                        variant="contained"
-                        color="success"
-                        size="small"
-                        onClick={() =>
-                          onMarkDelivered(order.id)
-                        }
-                        sx={{ textTransform: "none" }}
-                      >
-                        Mark Delivered
-                      </Button>
+                      isAdmin ? (
+
+                        <Button
+                          variant="contained"
+                          color="success"
+                          size="small"
+                          onClick={() =>
+                            handleMarkDelivered(order.id)
+                          }
+                          sx={{
+                            textTransform: "none"
+                          }}
+                        >
+                          Mark Delivered
+                        </Button>
+
+                      ) : (
+
+                        <Typography
+                          variant="body2"
+                          color="warning.main"
+                          fontWeight={600}
+                        >
+                          View Only
+                        </Typography>
+
+                      )
 
                     ) : (
 

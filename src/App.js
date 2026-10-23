@@ -1,5 +1,3 @@
-import { useState, useEffect } from "react";
-
 import {
   AppBar,
   Toolbar,
@@ -19,89 +17,145 @@ import OrderForm from "./components/OrderForm";
 import HarvestSummary from "./components/HarvestSummary";
 import CuttingSchedule from "./components/CuttingSchedule";
 import SupplierOrders from "./components/SupplierOrders";
+import Tasks from "./components/Tasks";
+import Expenses from "./components/Expenses";
+import Inventory from "./components/Inventory";
 
-import useLocalStorage from "./hooks/useLocalStorage";
-import { starterCrops } from "./data/seedData";
+import {
+  setCrops as saveCropsToRedux
+} from "./store/reducers/cropsReducer";
 
-function App() {
+import {
+  setBuyers as saveBuyersToRedux,
+  addBuyer as addBuyerToRedux
+} from "./store/reducers/buyersReducer";
 
-  const [page, setPage] = useState("dashboard");
+import {
+  addOrder as addOrderToRedux,
+  markDelivered as markDeliveredInRedux
+} from "./store/reducers/ordersReducer";
 
-  const [crops, setCrops] = useLocalStorage(
-    "agri_crops",
-    starterCrops
+import {
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+  useLocation
+} from "react-router-dom";
+
+import {
+  useSelector,
+  useDispatch
+} from "react-redux";
+
+import LoginForm from "./components/auth/LoginForm";
+import ProtectedRoute from "./components/auth/ProtectedRoute";
+import { logout } from "./store/reducers/authReducer";
+import ProfitLoss from "./components/ProfitLoss";
+import Reports from "./components/Reports";
+
+
+function MainWebsite() {
+
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+
+  const role = useSelector(
+    (state) => state.auth.role
   );
 
-  const [buyers, setBuyers] = useLocalStorage(
-    "agri_buyers",
-    []
+  const handleLogout = () => {
+    dispatch(logout());
+    navigate("/login", { replace: true });
+  };
+
+
+
+  const location = useLocation();
+
+const page =
+  location.pathname.split("/")[1] || "dashboard";
+
+
+  const crops = useSelector(
+    (state) => state.crops
   );
 
-  const [orders, setOrders] = useState(() => {
-    try {
-      const saved = localStorage.getItem("agricultureOrders");
+  const setCrops = (updatedCrops) => {
 
-      return saved ? JSON.parse(saved) : [];
-    } catch (error) {
-      console.error("Error loading orders:", error);
-      return [];
-    }
-  });
+    const newCrops =
+      typeof updatedCrops === "function"
+        ? updatedCrops(crops)
+        : updatedCrops;
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        "agricultureOrders",
-        JSON.stringify(orders)
-      );
-    } catch (error) {
-      console.error("Error saving orders:", error);
-    }
-  }, [orders]);
+    dispatch(saveCropsToRedux(newCrops));
+  };
+
+
+  // Buyers Data - Redux
+
+  const buyers = useSelector(
+    (state) => state.buyers
+  );
+
+  const setBuyers = (updatedBuyers) => {
+
+    const newBuyers =
+      typeof updatedBuyers === "function"
+        ? updatedBuyers(buyers)
+        : updatedBuyers;
+
+    dispatch(saveBuyersToRedux(newBuyers));
+  };
+
+
+  // Orders Data - Redux
+
+  const orders = useSelector(
+    (state) => state.orders
+  );
+
+
+  // Add New Order
 
   const addOrder = (newOrder) => {
-    setOrders((previousOrders) => [
-      ...previousOrders,
-      newOrder
-    ]);
+    dispatch(addOrderToRedux(newOrder));
   };
 
 
   const markDelivered = (id) => {
-    setOrders((previousOrders) =>
-      previousOrders.map((order) =>
-        order.id === id
-          ? { ...order, status: "Delivered" }
-          : order
-      )
-    );
+
+    if (role !== "Admin") {
+      return;
+    }
+
+    dispatch(markDeliveredInRedux(id));
   };
+
 
 
   const saveBuyer = (newBuyer) => {
-    setBuyers((previousBuyers) => {
-
-      const alreadyExists = previousBuyers.some(
-        (buyer) => buyer.cnic === newBuyer.cnic
-      );
-
-      if (alreadyExists) {
-        return previousBuyers;
-      }
-
-      return [...previousBuyers, newBuyer];
-    });
+    dispatch(addBuyerToRedux(newBuyer));
   };
+
+
 
   const navItems = [
     { label: "Dashboard", value: "dashboard" },
     { label: "Crops", value: "crops" },
     { label: "Buyers", value: "buyers" },
     { label: "Place Order", value: "place-order" },
-    { label: "Harvest & Orders", value: "orders" }
+    { label: "Harvest & Orders", value: "orders" },
+    { label: "Farm Tasks", value: "tasks" },
+    { label: "Expenses", value: "expenses" },
+    { label: "Inventory", value: "inventory" },
+    { label: "Profit & Loss", value: "profit-loss" },
+    { label: "Reports", value: "reports" }
   ];
 
+
   return (
+
     <Box
       sx={{
         backgroundColor: "#f4f8f4",
@@ -111,74 +165,163 @@ function App() {
       }}
     >
 
-
       <AppBar
         position="static"
         elevation={0}
         sx={{
           backgroundColor: "#1b5e20",
-          borderBottom: "1px solid rgba(255,255,255,0.15)"
+          borderBottom: "1px solid rgba(255,255,255,0.12)"
         }}
       >
 
         <Toolbar
           sx={{
-            flexWrap: "wrap",
-            gap: 1,
-            py: 1
+            minHeight: 72,
+            px: { xs: 2, md: 3 },
+            py: 1,
+            gap: 2,
+            flexWrap: "wrap"
           }}
         >
+
+      
 
           <Typography
             variant="h6"
             sx={{
               flexGrow: 1,
-              fontWeight: "bold",
-              minWidth: 200
+              fontWeight: 700,
+              fontSize: 21,
+              minWidth: 210,
+              letterSpacing: "-0.3px",
+              display: "flex",
+              alignItems: "center"
             }}
           >
+
             <FontAwesomeIcon
               icon={faWheatAwn}
-              style={{ marginRight: 12 }}
+              style={{
+                marginRight: 12,
+                fontSize: 23
+              }}
             />
 
             AgriVista Ventures
+
           </Typography>
+
 
           <Box
             sx={{
               display: "flex",
+              alignItems: "center",
               flexWrap: "wrap",
               gap: 0.5
             }}
           >
 
             {navItems.map((item) => (
+
               <Button
                 key={item.value}
                 color="inherit"
-                onClick={() => setPage(item.value)}
+                onClick={() => navigate(`/${item.value}`)}
                 sx={{
                   textTransform: "none",
+                  fontSize: 14,
+
                   fontWeight:
                     page === item.value ? 700 : 500,
 
                   backgroundColor:
                     page === item.value
-                      ? "rgba(255,255,255,0.16)"
+                      ? "rgba(255,255,255,0.14)"
                       : "transparent",
 
                   borderRadius: 2,
-                  px: 2,
+                  px: 1.8,
+                  py: 1,
 
                   "&:hover": {
-                    backgroundColor: "rgba(255,255,255,0.12)"
+                    backgroundColor:
+                      "rgba(255,255,255,0.12)"
                   }
                 }}
               >
                 {item.label}
               </Button>
+
             ))}
+
+
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: 1.5,
+                ml: { xs: 0, md: 1.5 },
+                pl: { xs: 1, md: 2 },
+                borderLeft:
+                  "1px solid rgba(255,255,255,0.25)"
+              }}
+            >
+
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1
+                }}
+              >
+
+                <Box
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    backgroundColor: "#a5d6a7"
+                  }}
+                />
+
+                <Typography
+                  sx={{
+                    color: "#e8f5e9",
+                    fontSize: 14,
+                    fontWeight: 600
+                  }}
+                >
+                  {role || "User"}
+                </Typography>
+
+              </Box>
+
+
+              <Button
+                color="inherit"
+                onClick={handleLogout}
+                sx={{
+                  textTransform: "none",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  px: 2,
+                  py: 0.8,
+                  minWidth: "auto",
+                  borderRadius: 2,
+
+                  border:
+                    "1px solid rgba(255,255,255,0.35)",
+
+                  "&:hover": {
+                    backgroundColor:
+                      "rgba(255,255,255,0.12)"
+                  }
+                }}
+              >
+                Log out
+              </Button>
+
+            </Box>
 
           </Box>
 
@@ -187,7 +330,9 @@ function App() {
       </AppBar>
 
 
+
       <Box sx={{ flexGrow: 1 }}>
+
 
         {page === "dashboard" && (
           <Dashboard
@@ -197,8 +342,6 @@ function App() {
         )}
 
 
-    
-
         {page === "crops" && (
           <Crops
             crops={crops}
@@ -206,8 +349,6 @@ function App() {
           />
         )}
 
-
-    
 
         {page === "buyers" && (
           <Buyers
@@ -217,8 +358,6 @@ function App() {
           />
         )}
 
-
-    
 
         {page === "place-order" && (
           <OrderForm
@@ -230,9 +369,30 @@ function App() {
         )}
 
 
-        
+        {page === "tasks" && (
+          <Tasks />
+        )}
+
+
+        {page === "expenses" && (
+          <Expenses />
+        )}
+
+
+        {page === "inventory" && (
+          <Inventory />
+        )}
+       {page === "profit-loss" && (
+        <ProfitLoss />
+        )}
+
+       {page === "reports" && (
+         <Reports />
+        )}
+
 
         {page === "orders" && (
+
           <Container
             maxWidth="xl"
             sx={{
@@ -241,20 +401,13 @@ function App() {
             }}
           >
 
-
             <HarvestSummary
               crops={crops}
               buyers={buyers}
               orders={orders}
             />
 
-
-      
-
             <CuttingSchedule crops={crops} />
-
-
-          
 
             <Box
               sx={{
@@ -269,6 +422,7 @@ function App() {
             </Box>
 
           </Container>
+
         )}
 
       </Box>
@@ -296,6 +450,40 @@ function App() {
       </Box>
 
     </Box>
+  );
+}
+
+
+function App() {
+
+  const isAuthenticated = useSelector(
+    (state) => state.auth.isAuthenticated
+  );
+
+  return (
+
+    <Routes>
+
+      <Route
+        path="/login"
+        element={
+          isAuthenticated
+            ? <Navigate to="/dashboard" replace />
+            : <LoginForm />
+        }
+      />
+
+      <Route
+        path="/*"
+        element={
+          <ProtectedRoute>
+            <MainWebsite />
+          </ProtectedRoute>
+        }
+      />
+
+    </Routes>
+
   );
 }
 
