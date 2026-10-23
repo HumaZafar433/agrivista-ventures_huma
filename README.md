@@ -1,70 +1,210 @@
-# Getting Started with Create React App
+# AgriVista Ventures
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+### Smart Agriculture Management System
 
-## Available Scripts
+AgriVista Ventures is a React-based agriculture management application designed to organize and manage everyday farming operations through a single dashboard.
 
-In the project directory, you can run:
+The system provides tools for crop monitoring, buyer registration, order management, farm scheduling, expense tracking, inventory control, financial reporting, and weather monitoring.
 
-### `npm start`
+## Project Features
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+### 1. Dashboard
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+* Overview of farming operations and crop information.
+* Live weather information for Lahore.
+* Temperature, humidity, wind speed, and rainfall probability.
+* Three-day weather forecast using the Open-Meteo API.
 
-### `npm test`
+### 2. Crop Management
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+* Add, view, edit, and delete crop records.
+* Track crop health scores and field information.
+* Manage harvest quantities and cutting dates.
+* Search crops by name or field.
 
-### `npm run build`
+### 3. Buyer Management
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+* Register buyers with contact and business details.
+* Store buyer photos and identification information.
+* Display registered buyers in a responsive layout.
+* Prevent duplicate registrations using CNIC validation.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### 4. Order Management
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+* Place orders for registered buyers.
+* Select crops and enter required quantities.
+* Check available crop stock before confirming an order.
+* Calculate order totals using quantity and selling price per kilogram.
+* Track Pending and Delivered orders.
 
-### `npm run eject`
+### 5. Farm Task Scheduler
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+* Create farming tasks for irrigation, fertilizer, spraying, and labour.
+* Assign tasks to crops and set due dates.
+* Track Pending, Completed, and Overdue tasks.
+* Search and filter task records.
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+### 6. Expense Management
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+* Record farming expenses by crop and category.
+* Track costs for seeds, fertilizer, labour, fuel, spraying, and other activities.
+* View total expenses and category-wise breakdowns.
+* Search and filter expense records.
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+### 7. Inventory Management
 
-## Learn More
+* Maintain records of agricultural supplies.
+* Track current stock quantities and units.
+* Record stock usage.
+* Display low-stock alerts when quantities reach minimum levels.
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+### 8. Profit and Loss
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+* Calculate revenue from delivered orders with recorded selling prices.
+* Compare recorded revenue against farming expenses.
+* Display net profit or loss.
+* Show crop-wise financial summaries.
 
-### Code Splitting
+### 9. Reports and Activity Log
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+* View monthly farming reports.
+* Export report data to CSV.
+* Print reports or save them as PDF using the browser.
+* Track application activities and record changes.
 
-### Analyzing the Bundle Size
+### 10. Authentication and User Roles
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+The application includes two demonstration user roles:
 
-### Making a Progressive Web App
+**Admin**
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+* View and add records.
+* Edit and delete permitted records.
+* Manage delivery status and farm operations.
 
-### Advanced Configuration
+**Manager**
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+* View existing records.
+* Add new records.
+* Restricted from administrative edit and delete actions.
 
-### Deployment
+## Technologies Used
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+* React.js
+* JavaScript (ES6+)
+* Redux Toolkit
+* React Redux
+* React Router DOM
+* Material UI
+* Bootstrap
+* Font Awesome
+* HTML and CSS
+* Browser localStorage
+* Open-Meteo Weather API
 
-### `npm run build` fails to minify
+## Installation and Setup
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+### Requirements
+
+Install Node.js and npm before running the application.
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/HumaZafar433/agrivista-ventures_huma.git
+```
+
+### 2. Open the Project
+
+```bash
+cd agrivista-ventures_huma
+```
+
+### 3. Install Dependencies
+
+```bash
+npm install
+```
+
+### 4. Start the Application
+
+```bash
+npm start
+```
+
+The application will normally open at:
+
+`http://localhost:3000`
+
+If port 3000 is occupied, React may offer another available port.
+
+## Demo Login Credentials
+
+For testing purposes:
+
+| Role    | Username | Password   |
+| ------- | -------- | ---------- |
+| Admin   | admin    | admin123   |
+| Manager | manager  | manager123 |
+
+These credentials are intended only for demonstrating the frontend authentication workflow.
+
+## Data Management
+
+Redux Toolkit manages application state, including crops, buyers, orders, tasks, expenses, and inventory.
+
+Browser localStorage is used to preserve application records between page refreshes.
+
+The weather module retrieves information from the Open-Meteo API.
+
+**Note:** This project is a frontend demonstration. It does not use a production backend or database. Authentication and role restrictions are implemented on the client side and are not intended for production security.
+
+Data saved in one browser is not automatically shared with other users or included in the GitHub repository.
+
+## Project Structure
+
+```text
+src/
+├── components/
+│   ├── auth/
+│   ├── Dashboard.js
+│   ├── Crops.js
+│   ├── Buyers.js
+│   ├── OrderForm.js
+│   ├── SupplierOrders.js
+│   ├── Tasks.js
+│   ├── Expenses.js
+│   ├── Inventory.js
+│   ├── ProfitLoss.js
+│   ├── Reports.js
+│   └── WeatherCard.js
+├── store/
+│   ├── reducers/
+│   ├── middleware/
+│   └── selectors/
+├── hooks/
+├── data/
+├── App.js
+└── index.js
+```
+
+## Financial Calculation
+
+The application uses the following formula:
+
+**Revenue = Order Quantity × Selling Price per kg**
+
+**Net Profit/Loss = Recorded Revenue − Recorded Expenses**
+
+Revenue is calculated from delivered orders that have recorded selling prices. Older orders without selling prices are excluded from confirmed revenue calculations.
+
+## Project Purpose
+
+The purpose of AgriVista Ventures is to demonstrate React development concepts through a practical agriculture management application.
+
+The project uses reusable components, React hooks, Redux Toolkit, conditional rendering, forms, routing, API integration, and responsive user interfaces.
+
+---
+
+**Project:** AgriVista Ventures
+**Repository:** https://github.com/HumaZafar433/agrivista-ventures_huma
