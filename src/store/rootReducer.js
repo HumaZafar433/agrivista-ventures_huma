@@ -10,6 +10,12 @@ import expensesReducer from "./reducers/expensesReducer";
 import inventoryReducer from "./reducers/inventoryReducer";
 import activityReducer from "./reducers/activityReducer";
 import weatherReducer from "./reducers/weatherReducer";
+
+import workersReducer from "../app/redux/reducers/workers";
+import attendanceReducer from "../app/redux/reducers/attendance";
+import equipmentReducer from "../app/redux/reducers/equipment";
+import maintenanceReducer from "../app/redux/reducers/maintenance";
+
 const rootReducer = combineReducers({
   ui: uiReducer,
   auth: authReducer,
@@ -20,7 +26,11 @@ const rootReducer = combineReducers({
   expenses: expensesReducer,
   inventory: inventoryReducer,
   activity: activityReducer,
-  weather: weatherReducer
+  weather: weatherReducer,
+  workers: workersReducer,
+  attendance: attendanceReducer,
+  equipment: equipmentReducer,
+  maintenance:  maintenanceReducer
 });
 
 export default rootReducer;

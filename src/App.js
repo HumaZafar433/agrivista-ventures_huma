@@ -53,7 +53,9 @@ import ProtectedRoute from "./components/auth/ProtectedRoute";
 import { logout } from "./store/reducers/authReducer";
 import ProfitLoss from "./components/ProfitLoss";
 import Reports from "./components/Reports";
-
+import Workers from "./components/Workers";
+import Equipment from "./components/Equipment";
+import DashboardExtras from "./components/DashboardExtras";
 
 function MainWebsite() {
 
@@ -150,7 +152,10 @@ const page =
     { label: "Expenses", value: "expenses" },
     { label: "Inventory", value: "inventory" },
     { label: "Profit & Loss", value: "profit-loss" },
-    { label: "Reports", value: "reports" }
+    { label: "Reports", value: "reports" },
+    { label: "Workers", value: "workers" },
+    { label: "Equipment", value: "equipment" },
+
   ];
 
 
@@ -334,13 +339,15 @@ const page =
       <Box sx={{ flexGrow: 1 }}>
 
 
-        {page === "dashboard" && (
-          <Dashboard
-            crops={crops}
-            orders={orders}
-          />
-        )}
-
+       {page === "dashboard" && (
+  <>
+    <Dashboard
+      crops={crops}
+      orders={orders}
+    />
+<DashboardExtras />
+  </>
+)}
 
         {page === "crops" && (
           <Crops
@@ -389,6 +396,12 @@ const page =
        {page === "reports" && (
          <Reports />
         )}
+        {page === "workers" && (
+  <Workers />
+)}
+{page === "equipment" && (
+  <Equipment />
+)}
 
 
         {page === "orders" && (
