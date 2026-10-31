@@ -765,25 +765,29 @@ The application uses responsive layouts, cards, tables, forms, and navigation el
 
 ## 📸 Project Screenshots
 
-Screenshots can be stored in the following repository directory:
+### 1. Dashboard & Live Weather
+![AgriVista Dashboard](docs/screenshots/dashboard.png)
 
-```text
-docs/screenshots/
-```
+### 2. Crop Management
+![Crop Management](docs/screenshots/crop.png)
 
-Recommended screenshots:
+### 3. Buyer Management
+![Buyer Management](docs/screenshots/buyers.png)
 
-* Dashboard and Live Weather.
-* Crop Management.
-* Buyer Registration.
-* Workers and Attendance.
-* Equipment and Maintenance.
-* Profit & Loss.
-* Reports and Activity Log.
+### 4. Workers Management
+![Workers Management](docs/screenshots/workers1.png)
 
-Screenshot references should be added after the actual image files are uploaded to the repository.
+### 5. Attendance & Payroll
+![Attendance Management](docs/screenshots/workers2.png)
 
----
+### 6. Equipment & Maintenance
+![Equipment Management](docs/screenshots/equipment.png)
+
+### 7. Profit & Loss
+![Profit and Loss](docs/screenshots/profit%26loss.png)
+
+### 8. Reports & Activity Log
+![Reports and Activity Log](docs/screenshots/reports.png)
 
 ## 🧪 Application Testing
 
