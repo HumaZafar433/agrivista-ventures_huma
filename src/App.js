@@ -93,9 +93,6 @@ const page =
     dispatch(saveCropsToRedux(newCrops));
   };
 
-
-  // Buyers Data - Redux
-
   const buyers = useSelector(
     (state) => state.buyers
   );
@@ -110,15 +107,10 @@ const page =
     dispatch(saveBuyersToRedux(newBuyers));
   };
 
-
-  // Orders Data - Redux
-
   const orders = useSelector(
     (state) => state.orders
   );
 
-
-  // Add New Order
 
   const addOrder = (newOrder) => {
     dispatch(addOrderToRedux(newOrder));
@@ -151,10 +143,10 @@ const page =
     { label: "Farm Tasks", value: "tasks" },
     { label: "Expenses", value: "expenses" },
     { label: "Inventory", value: "inventory" },
-    { label: "Profit & Loss", value: "profit-loss" },
-    { label: "Reports", value: "reports" },
     { label: "Workers", value: "workers" },
     { label: "Equipment", value: "equipment" },
+     { label: "Profit & Loss", value: "profit-loss" },
+     { label: "Reports", value: "reports" },
 
   ];
 
@@ -345,7 +337,9 @@ const page =
       crops={crops}
       orders={orders}
     />
-<DashboardExtras />
+<DashboardExtras
+  onOpenEquipment={() => navigate("/equipment")}
+/>
   </>
 )}
 

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+﻿import { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 
 import {
@@ -11,6 +11,7 @@ import {
 } from "@mui/material";
 
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { BarChart, Bar, XAxis, YAxis } from "recharts";
 
 import {
   faUsers,
@@ -394,7 +395,7 @@ function DashboardExtras({ onOpenEquipment }) {
                 fontWeight={700}
                 sx={{ color: "#2e7d32" }}
               >
-                ● Present
+                â— Present
               </Typography>
 
               <Typography
@@ -402,7 +403,7 @@ function DashboardExtras({ onOpenEquipment }) {
                 fontWeight={700}
                 sx={{ color: "#d32f2f" }}
               >
-                ● Absent
+                â— Absent
               </Typography>
             </Box>
           }
@@ -458,66 +459,57 @@ function DashboardExtras({ onOpenEquipment }) {
 
                   {/* BARS */}
 
-                  <Box
-                    sx={{
-                      height: 64,
-                      my: 1.5,
-                      display: "flex",
-                      justifyContent: "center",
-                      alignItems: "flex-end",
-                      gap: 0.8
-                    }}
-                  >
-                    {isEmpty ? (
-                      <Box
-                        sx={{
-                          width: 25,
-                          height: 48,
-                          bgcolor: "#e3e8e5",
-                          borderRadius: 1
-                        }}
-                      />
-                    ) : (
-                      <>
-                        {day.present > 0 && (
-                          <Box
-                            title={`${day.present} Present`}
-                            sx={{
-                              width: 24,
-                              height: `${
-                                Math.max(
-                                  12,
-                                  (day.present / maxAttendance) * 55
-                                )
-                              }px`,
-                              bgcolor: "#2e7d32",
-                              borderRadius: 1
-                            }}
-                          />
-                        )}
+<Box
+  sx={{
+    height: 64,
+    my: 1.5,
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center"
+  }}
+>
+  {isEmpty ? (
+    <Box
+      sx={{
+        width: 25,
+        height: 48,
+        bgcolor: "#e3e8e5",
+        borderRadius: 1
+      }}
+    />
+  ) : (
+    <BarChart
+      width={95}
+      height={64}
+      data={[{
+        day: day.date,
+        present: day.present,
+        absent: day.absent
+      }]}
+      margin={{ top: 3, right: 5, left: 5, bottom: 0 }}
+    >
+      <XAxis dataKey="day" hide />
+      <YAxis hide domain={[0, maxAttendance]} />
 
-                        {day.absent > 0 && (
-                          <Box
-                            title={`${day.absent} Absent`}
-                            sx={{
-                              width: 24,
-                              height: `${
-                                Math.max(
-                                  12,
-                                  (day.absent / maxAttendance) * 55
-                                )
-                              }px`,
-                              bgcolor: "#e53935",
-                              borderRadius: 1
-                            }}
-                          />
-                        )}
-                      </>
-                    )}
-                  </Box>
+      <Bar
+        dataKey="present"
+        fill="#2e7d32"
+        barSize={24}
+        radius={[4, 4, 0, 0]}
+        isAnimationActive={false}
+      />
 
-
-                  {/* DAILY COUNT */}
+      <Bar
+        dataKey="absent"
+        fill="#e53935"
+        barSize={24}
+        radius={[4, 4, 0, 0]}
+        isAnimationActive={false}
+      />
+    </BarChart>
+  )}
+</Box>
+{/* DAILY COUNT */}
 
                   <Typography
                     variant="body2"

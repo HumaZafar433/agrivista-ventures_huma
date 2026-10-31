@@ -1,19 +1,26 @@
 import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import AttendanceRegister from "./AttendanceRegister";
 
 import {
   Box,
   Container,
   Typography,
   Paper,
-  TextField,
-  MenuItem,
-  Button,
-  Chip,
-  Alert,
-  Divider
+  Alert
 } from "@mui/material";
+
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+
+import {
+  faUsers,
+  faUserCheck,
+  faUserXmark
+} from "@fortawesome/free-solid-svg-icons";
+
+import WorkerForm from "./WorkerForm";
+import WorkerTable from "./WorkerTable";
+import AttendanceRegister from "./AttendanceRegister";
+import ConfirmModal from "./ConfirmModal";
 
 import {
   GETWORKERS,
@@ -21,6 +28,9 @@ import {
   UPDATEWORKER,
   REMOVEWORKER
 } from "../app/redux/actions/workers";
+
+
+// EMPTY WORKER FORM
 
 const initialForm = {
   fullName: "",
@@ -32,51 +42,86 @@ const initialForm = {
   status: "Active"
 };
 
-const workerRoles = [
-  "Farm Hand",
-  "Driver",
-  "Supervisor",
-  "Sprayer"
-];
 
 function Workers() {
+
   const dispatch = useDispatch();
+
+  // WORKERS DATA FROM REDUX
 
   const {
     workers = [],
     workersLoading,
     addLoading,
     updateLoading,
+    removeLoading,
     workersError,
     addError,
     updateError,
     removeError
   } = useSelector((state) => state.workers);
 
-  const role = useSelector((state) => state.auth.role);
+
+  // USER ROLE
+
+  const role = useSelector(
+    (state) => state.auth.role
+  );
+
   const isAdmin = role === "Admin";
 
+
+  // LOCAL FORM STATE
+
   const [form, setForm] = useState(initialForm);
+
   const [editingId, setEditingId] = useState(null);
-  const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("All");
-  const [statusFilter, setStatusFilter] = useState("All");
+
+  const [workerToDelete, setWorkerToDelete] = useState(null);
+
   const [message, setMessage] = useState("");
+
   const [formError, setFormError] = useState("");
+
+
+  // LOAD WORKERS
 
   useEffect(() => {
     dispatch(GETWORKERS());
   }, [dispatch]);
 
+
+  // UPDATE FORM FIELDS
+
   const updateField = (field, value) => {
-    setForm((prev) => ({
-      ...prev,
-      [field]: value
+
+    let updatedValue = value;
+
+    // Only allow numbers and dashes in CNIC
+    if (field === "cnic") {
+      updatedValue = value
+        .replace(/[^\d-]/g, "")
+        .slice(0, 15);
+    }
+
+    // Only allow 11 digits in phone
+    if (field === "phone") {
+      updatedValue = value
+        .replace(/\D/g, "")
+        .slice(0, 11);
+    }
+
+    setForm((previous) => ({
+      ...previous,
+      [field]: updatedValue
     }));
 
-    setMessage("");
     setFormError("");
+    setMessage("");
   };
+
+
+  // RESET FORM
 
   const resetForm = () => {
     setForm(initialForm);
@@ -84,118 +129,219 @@ function Workers() {
     setFormError("");
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+
+  // ADD OR UPDATE WORKER
+
+  const handleSubmit = (event) => {
+
+    event.preventDefault();
+
+    setFormError("");
+    setMessage("");
 
     const name = form.fullName.trim();
+
     const cnic = form.cnic.replace(/\D/g, "");
+
+    const phone = form.phone.trim();
+
     const wage = Number(form.dailyWage);
 
+
+    // FORM VALIDATION
+
     if (!/^[A-Za-z ]{3,}$/.test(name)) {
-      setFormError("Enter a valid worker name.");
+      setFormError(
+        "Enter a valid worker name with at least 3 letters."
+      );
       return;
     }
 
     if (cnic.length !== 13) {
-      setFormError("CNIC must contain 13 digits.");
+      setFormError(
+        "CNIC must contain exactly 13 digits."
+      );
       return;
     }
 
-    if (!/^\d{11}$/.test(form.phone)) {
-      setFormError("Phone must contain 11 digits.");
+    if (!/^\d{11}$/.test(phone)) {
+      setFormError(
+        "Phone number must contain 11 digits."
+      );
       return;
     }
 
-    if (!Number.isFinite(wage) || wage <= 0) {
-      setFormError("Enter a valid daily wage.");
+    if (
+      !Number.isFinite(wage) ||
+      wage <= 0
+    ) {
+      setFormError(
+        "Daily wage must be greater than zero."
+      );
       return;
     }
 
     if (!form.joinDate) {
-      setFormError("Select joining date.");
+      setFormError(
+        "Please select a joining date."
+      );
       return;
     }
+
 
     const workerData = {
       ...form,
       fullName: name,
+      phone,
       dailyWage: wage
     };
 
+
+    // UPDATE EXISTING WORKER
+
     if (editingId !== null) {
+
       if (!isAdmin) return;
 
       dispatch(
         UPDATEWORKER(
-          { ...workerData, id: editingId },
+          {
+            ...workerData,
+            id: editingId
+          },
+
           () => {
             resetForm();
-            setMessage("Worker updated successfully!");
+
+            setMessage(
+              "Worker updated successfully!"
+            );
           }
         )
       );
+
     } else {
+
+      // ADD NEW WORKER
+
       dispatch(
-        ADDWORKER(workerData, () => {
-          resetForm();
-          setMessage("Worker added successfully!");
-        })
+        ADDWORKER(
+          workerData,
+
+          () => {
+            resetForm();
+
+            setMessage(
+              "Worker registered successfully!"
+            );
+          }
+        )
       );
+
     }
   };
 
+
+  // EDIT WORKER
+
   const handleEdit = (worker) => {
+
     if (!isAdmin) return;
 
     setEditingId(worker.id);
 
     setForm({
-      fullName: worker.fullName,
-      cnic: worker.cnic,
-      phone: worker.phone,
-      role: worker.role,
-      dailyWage: worker.dailyWage,
-      joinDate: worker.joinDate,
-      status: worker.status
+      fullName: worker.fullName || "",
+      cnic: worker.cnic || "",
+      phone: worker.phone || "",
+      role: worker.role || "Farm Hand",
+      dailyWage: String(worker.dailyWage || ""),
+      joinDate: worker.joinDate || "",
+      status: worker.status || "Active"
     });
 
     setMessage("");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    setFormError("");
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth"
+    });
   };
+
+
+  // OPEN DELETE CONFIRMATION
 
   const handleDelete = (worker) => {
+
     if (!isAdmin) return;
 
-    if (window.confirm(`Delete ${worker.fullName}?`)) {
-      dispatch(
-        REMOVEWORKER(worker.id, () => {
-          setMessage("Worker deleted successfully!");
-        })
-      );
-    }
+    setWorkerToDelete(worker);
+
   };
 
-  const filteredWorkers = workers.filter((worker) => {
-    const query = search.toLowerCase();
 
-    const matchesSearch =
-      (worker.fullName || "").toLowerCase().includes(query) ||
-      (worker.cnic || "").includes(search);
+  // CONFIRM WORKER DELETE
 
-    const matchesRole =
-      roleFilter === "All" ||
-      worker.role === roleFilter;
+  const confirmDelete = () => {
 
-    const matchesStatus =
-      statusFilter === "All" ||
-      worker.status === statusFilter;
+    if (!isAdmin || !workerToDelete) return;
 
-    return matchesSearch && matchesRole && matchesStatus;
-  });
+    dispatch(
+      REMOVEWORKER(
+        workerToDelete.id,
+
+        () => {
+
+          setMessage(
+            "Worker deleted successfully!"
+          );
+
+          setWorkerToDelete(null);
+        }
+      )
+    );
+  };
+
+
+  // WORKER STATISTICS
+
+  const totalWorkers = workers.length;
 
   const activeWorkers = workers.filter(
     (worker) => worker.status === "Active"
   ).length;
+
+  const inactiveWorkers =
+    totalWorkers - activeWorkers;
+
+
+  const summaryCards = [
+    {
+      title: "Total Workers",
+      value: totalWorkers,
+      icon: faUsers,
+      color: "#1b5e20",
+      background: "#e8f5e9"
+    },
+    {
+      title: "Active Workers",
+      value: activeWorkers,
+      icon: faUserCheck,
+      color: "#2e7d32",
+      background: "#e8f5e9"
+    },
+    {
+      title: "Inactive Workers",
+      value: inactiveWorkers,
+      icon: faUserXmark,
+      color: "#c62828",
+      background: "#ffebee"
+    }
+  ];
+
+
+  // ERROR MESSAGES
 
   const error =
     formError ||
@@ -204,7 +350,9 @@ function Workers() {
     updateError ||
     removeError;
 
+
   return (
+
     <Box
       sx={{
         bgcolor: "#f4f8f4",
@@ -212,22 +360,32 @@ function Workers() {
         py: 4
       }}
     >
+
       <Container maxWidth="xl">
 
-        <Typography
-          variant="h4"
-          fontWeight={700}
-          sx={{ color: "#183b29", mb: 1 }}
-        >
-          Workers & Labour Management
-        </Typography>
 
-        <Typography
-          color="text.secondary"
-          sx={{ mb: 4 }}
-        >
-          Manage farm workers, employment details and wages.
-        </Typography>
+        {/* PAGE HEADING */}
+
+        <Box sx={{ mb: 4 }}>
+
+          <Typography
+            variant="h4"
+            fontWeight={700}
+            sx={{ color: "#183b29" }}
+          >
+            Workers & Labour Management
+          </Typography>
+
+          <Typography
+            color="text.secondary"
+            sx={{ mt: 1 }}
+          >
+            Manage farm workers, employment details,
+            attendance and monthly wages.
+          </Typography>
+
+        </Box>
+
 
         {/* SUMMARY CARDS */}
 
@@ -236,377 +394,157 @@ function Workers() {
             display: "grid",
             gridTemplateColumns: {
               xs: "1fr",
-              md: "repeat(3, 1fr)"
+              sm: "repeat(3, minmax(0, 1fr))"
             },
             gap: 2,
             mb: 4
           }}
         >
-          {[
-            { label: "Total Workers", value: workers.length },
-            { label: "Active Workers", value: activeWorkers },
-            {
-              label: "Inactive Workers",
-              value: workers.length - activeWorkers
-            }
-          ].map((item) => (
+
+          {summaryCards.map((card) => (
+
             <Paper
-              key={item.label}
+              key={card.title}
+              elevation={0}
               sx={{
                 p: 3,
                 borderRadius: 3,
-                border: "1px solid #e0e9e0"
+                border: "1px solid #e3ebe4",
+                boxShadow:
+                  "0 4px 16px rgba(0,0,0,0.04)"
               }}
             >
-              <Typography color="text.secondary">
-                {item.label}
-              </Typography>
 
-              <Typography
-                variant="h4"
-                fontWeight={700}
-                color="success.dark"
-                sx={{ mt: 1 }}
-              >
-                {item.value}
-              </Typography>
-            </Paper>
-          ))}
-        </Box>
-
-        {/* WORKER FORM */}
-
-        <Paper
-          sx={{
-            p: { xs: 2, md: 4 },
-            borderRadius: 3,
-            mb: 4,
-            border: "1px solid #e0e9e0"
-          }}
-        >
-          <Typography variant="h6" fontWeight={700} mb={3}>
-            {editingId !== null
-              ? "Edit Worker"
-              : "Register New Worker"}
-          </Typography>
-
-          {error && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-          )}
-
-          {message && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              {message}
-            </Alert>
-          )}
-
-          <Box component="form" onSubmit={handleSubmit}>
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: {
-                  xs: "1fr",
-                  md: "repeat(2, 1fr)"
-                },
-                gap: 2.5
-              }}
-            >
-              <TextField
-                label="Full Name"
-                value={form.fullName}
-                onChange={(e) =>
-                  updateField("fullName", e.target.value)
-                }
-                required
-                fullWidth
-              />
-
-              <TextField
-                label="CNIC"
-                placeholder="12345-1234567-1"
-                value={form.cnic}
-                onChange={(e) =>
-                  updateField(
-                    "cnic",
-                    e.target.value.replace(/[^\d-]/g, "")
-                  )
-                }
-                required
-                fullWidth
-              />
-
-              <TextField
-                label="Phone Number"
-                placeholder="03001234567"
-                value={form.phone}
-                onChange={(e) =>
-                  updateField(
-                    "phone",
-                    e.target.value.replace(/\D/g, "").slice(0, 11)
-                  )
-                }
-                required
-                fullWidth
-              />
-
-              <TextField
-                select
-                label="Worker Role"
-                value={form.role}
-                onChange={(e) =>
-                  updateField("role", e.target.value)
-                }
-                fullWidth
-              >
-                {workerRoles.map((workerRole) => (
-                  <MenuItem
-                    key={workerRole}
-                    value={workerRole}
-                  >
-                    {workerRole}
-                  </MenuItem>
-                ))}
-              </TextField>
-
-              <TextField
-                label="Daily Wage (PKR)"
-                type="number"
-                value={form.dailyWage}
-                onChange={(e) =>
-                  updateField("dailyWage", e.target.value)
-                }
-                slotProps={{
-                  htmlInput: { min: 1 }
-                }}
-                required
-                fullWidth
-              />
-
-              <TextField
-                label="Joining Date"
-                type="date"
-                value={form.joinDate}
-                onChange={(e) =>
-                  updateField("joinDate", e.target.value)
-                }
-                slotProps={{
-                  inputLabel: { shrink: true }
-                }}
-                required
-                fullWidth
-              />
-
-              <TextField
-                select
-                label="Status"
-                value={form.status}
-                onChange={(e) =>
-                  updateField("status", e.target.value)
-                }
-                fullWidth
-              >
-                <MenuItem value="Active">Active</MenuItem>
-                <MenuItem value="Inactive">Inactive</MenuItem>
-              </TextField>
-            </Box>
-
-            <Box sx={{ display: "flex", gap: 2, mt: 3 }}>
-              <Button
-                type="submit"
-                variant="contained"
-                disabled={addLoading || updateLoading}
+              <Box
                 sx={{
-                  bgcolor: "#1b5e20",
-                  px: 4,
-                  py: 1.2,
-                  textTransform: "none",
-                  "&:hover": { bgcolor: "#12451a" }
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 2
                 }}
               >
-                {editingId !== null
-                  ? "Update Worker"
-                  : "Add Worker"}
-              </Button>
 
-              {editingId !== null && (
-                <Button
-                  variant="outlined"
-                  onClick={resetForm}
-                >
-                  Cancel
-                </Button>
-              )}
-            </Box>
-          </Box>
-        </Paper>
+                <Box>
 
-        {/* WORKERS LIST */}
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                  >
+                    {card.title}
+                  </Typography>
 
-        <Paper
-          sx={{
-            p: 3,
-            borderRadius: 3,
-            border: "1px solid #e0e9e0"
-          }}
-        >
-          <Typography variant="h6" fontWeight={700} mb={3}>
-            Registered Workers
-          </Typography>
-
-          <Box
-            sx={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 2,
-              mb: 3
-            }}
-          >
-            <TextField
-              label="Search Worker"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              size="small"
-              sx={{ flex: 1, minWidth: 180 }}
-            />
-
-            <TextField
-              select
-              label="Role"
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              size="small"
-              sx={{ minWidth: 160 }}
-            >
-              <MenuItem value="All">All Roles</MenuItem>
-              {workerRoles.map((workerRole) => (
-                <MenuItem
-                  key={workerRole}
-                  value={workerRole}
-                >
-                  {workerRole}
-                </MenuItem>
-              ))}
-            </TextField>
-
-            <TextField
-              select
-              label="Status"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              size="small"
-              sx={{ minWidth: 150 }}
-            >
-              <MenuItem value="All">All Statuses</MenuItem>
-              <MenuItem value="Active">Active</MenuItem>
-              <MenuItem value="Inactive">Inactive</MenuItem>
-            </TextField>
-          </Box>
-
-          {workersLoading ? (
-            <Typography>Loading workers...</Typography>
-          ) : filteredWorkers.length === 0 ? (
-            <Typography color="text.secondary">
-              No workers found.
-            </Typography>
-          ) : (
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: {
-                  xs: "1fr",
-                  md: "repeat(2, 1fr)",
-                  lg: "repeat(3, 1fr)"
-                },
-                gap: 2
-              }}
-            >
-              {filteredWorkers.map((worker) => (
-                <Paper
-                  key={worker.id}
-                  variant="outlined"
-                  sx={{
-                    p: 2.5,
-                    borderRadius: 2,
-                    bgcolor: "#fafcf9"
-                  }}
-                >
-                  <Box
+                  <Typography
+                    variant="h4"
+                    fontWeight={800}
                     sx={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      mb: 2,
-                      gap: 1
+                      color: "#183b29",
+                      mt: 1
                     }}
                   >
-                    <Typography fontWeight={700}>
-                      {worker.fullName}
-                    </Typography>
-
-                    <Chip
-                      label={worker.status}
-                      size="small"
-                      color={
-                        worker.status === "Active"
-                          ? "success"
-                          : "default"
-                      }
-                    />
-                  </Box>
-
-                  <Typography variant="body2" mb={1}>
-                    Role: {worker.role}
+                    {card.value}
                   </Typography>
 
-                  <Typography variant="body2" mb={1}>
-                    CNIC: {worker.cnic}
-                  </Typography>
+                </Box>
 
-                  <Typography variant="body2" mb={1}>
-                    Phone: {worker.phone}
-                  </Typography>
 
-                  <Typography variant="body2" mb={1}>
-                    Daily Wage: Rs.{" "}
-                    {Number(worker.dailyWage).toLocaleString("en-PK")}
-                  </Typography>
+                <Box
+                  sx={{
+                    width: 50,
+                    height: 50,
+                    borderRadius: 2,
+                    bgcolor: card.background,
+                    color: card.color,
+                    display: "flex",
+                    justifyContent: "center",
+                    alignItems: "center",
+                    fontSize: 22
+                  }}
+                >
 
-                  <Typography variant="body2" mb={2}>
-                    Joined: {worker.joinDate}
-                  </Typography>
+                  <FontAwesomeIcon icon={card.icon} />
 
-                  <Divider sx={{ mb: 2 }} />
+                </Box>
 
-                  {isAdmin && (
-                    <Box sx={{ display: "flex", gap: 1 }}>
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        onClick={() => handleEdit(worker)}
-                      >
-                        Edit
-                      </Button>
+              </Box>
 
-                      <Button
-                        size="small"
-                        variant="outlined"
-                        color="error"
-                        onClick={() => handleDelete(worker)}
-                      >
-                        Delete
-                      </Button>
-                    </Box>
-                  )}
-                </Paper>
-              ))}
-            </Box>
-          )}
-        </Paper>
+            </Paper>
 
-            <AttendanceRegister />
+          ))}
+
+        </Box>
+
+
+        {/* ERROR MESSAGE */}
+
+        {error && (
+          <Alert
+            severity="error"
+            sx={{ mb: 3, borderRadius: 2 }}
+          >
+            {error}
+          </Alert>
+        )}
+
+
+        {/* SUCCESS MESSAGE */}
+
+        {message && (
+          <Alert
+            severity="success"
+            sx={{ mb: 3, borderRadius: 2 }}
+            onClose={() => setMessage("")}
+          >
+            {message}
+          </Alert>
+        )}
+
+
+        {/* REUSABLE WORKER FORM */}
+
+        <WorkerForm
+          form={form}
+          editingId={editingId}
+          updateField={updateField}
+          handleSubmit={handleSubmit}
+          resetForm={resetForm}
+          loading={addLoading || updateLoading}
+        />
+
+
+        {/* REUSABLE WORKER TABLE */}
+
+        <WorkerTable
+          workers={workers}
+          loading={workersLoading}
+          isAdmin={isAdmin}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
+        />
+
+
+        {/* ATTENDANCE AND PAYROLL */}
+
+        <AttendanceRegister />
+
+
+        {/* DELETE CONFIRMATION */}
+
+        <ConfirmModal
+          open={Boolean(workerToDelete)}
+          title="Delete Worker"
+          description={
+            workerToDelete
+              ? `Are you sure you want to delete ${workerToDelete.fullName}? This action cannot be undone.`
+              : ""
+          }
+          onCancel={() => setWorkerToDelete(null)}
+          onConfirm={confirmDelete}
+          busy={removeLoading}
+        />
+
 
       </Container>
+
     </Box>
   );
 }
