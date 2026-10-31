@@ -22,6 +22,9 @@ It provides financial insights, operational reports, and activity tracking to su
 **GitHub Repository:**
 https://github.com/HumaZafar433/agrivista-ventures_huma
 
+**Live Demo:**
+https://agrivista-venturess-huma.netlify.app/
+
 ---
 
 ## 🚀 Key Features
