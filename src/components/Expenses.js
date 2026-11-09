@@ -45,7 +45,7 @@ const getToken = () => {
 function Expenses() {
   const dispatch = useDispatch();
 
-  const expenses = useSelector((state) => state.expenses);
+
   const crops = useSelector((state) => state.crops);
   const role = useSelector((state) => state.auth.role);
 

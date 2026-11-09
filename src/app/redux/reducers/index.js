@@ -1,4 +1,4 @@
-﻿import { combineReducers } from "@reduxjs/toolkit";
+import { combineReducers } from "@reduxjs/toolkit";
 
 import uiReducer from "../../../store/reducers/uiReducer";
 import authReducer from "../../../store/reducers/authReducer";
