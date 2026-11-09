@@ -1,4 +1,5 @@
-import { useState } from "react";
+
+import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 
 import {
@@ -19,20 +20,29 @@ import {
   deleteExpense
 } from "../store/reducers/expensesReducer";
 
+const API_URL = "http://localhost:5000/api/expenses";
+
 const categories = [
   "Seeds",
   "Fertilizer",
   "Labour",
   "Fuel",
   "Spraying",
+  "Repair",
   "Other"
 ];
 
 const formatMoney = (amount) =>
   `Rs. ${Number(amount || 0).toLocaleString("en-PK")}`;
 
-function Expenses() {
+const getToken = () => {
+  const session = JSON.parse(
+    localStorage.getItem("agri_session") || "{}"
+  );
+  return session.token;
+};
 
+function Expenses() {
   const dispatch = useDispatch();
 
   const expenses = useSelector((state) => state.expenses);
@@ -53,6 +63,75 @@ function Expenses() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
   const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [expenseRecords, setExpenseRecords] = useState([]);
+
+  useEffect(() => {
+    const loadExpenses = async () => {
+      try {
+        const response = await fetch(API_URL, {
+          headers: {
+            Authorization: `Bearer ${getToken()}`
+          }
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.succeeded) {
+          throw new Error(
+            result.message || "Failed to load expenses."
+          );
+        }
+
+        setExpenseRecords(
+          (result.data || []).map((item) => ({
+            ...item,
+            amount: Number(item.amount)
+          }))
+        );
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadExpenses();
+  }, []);
+
+  const isPayrollExpense = (expense) => {
+    const note = String(expense.note || "");
+
+    return (
+      expense.sourceType === "payroll" ||
+      /\[PAYROLL:[^\]]+\]/.test(note) ||
+      /^Monthly wages - .+ - \d{4}-(0[1-9]|1[0-2])$/.test(note)
+    );
+  };
+
+  const displayExpenseNote = (note) => {
+    const clean = String(note || "")
+      .replace(/\s*\[PAYROLL:[^\]]+\]/g, "")
+      .trim();
+
+    if (!clean) return "No notes";
+
+    const match = clean.match(
+      /^(Monthly wages - .+ - )(\d{4})-(0[1-9]|1[0-2])$/
+    );
+
+    if (!match) return clean;
+
+    const months = [
+      "January", "February", "March", "April",
+      "May", "June", "July", "August",
+      "September", "October", "November", "December"
+    ];
+
+    return `${match[1]}${months[Number(match[3]) - 1]} ${match[2]}`;
+  };
 
   const getCropName = (cropId) => {
     const crop = crops.find(
@@ -74,8 +153,10 @@ function Expenses() {
     setEditingId(null);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!isAdmin || saving) return;
 
     if (
       !form.cropId ||
@@ -83,42 +164,79 @@ function Expenses() {
       !Number.isFinite(Number(form.amount)) ||
       Number(form.amount) <= 0
     ) {
-      setMessage("Please enter valid expense details.");
+      setError("Please enter valid expense details.");
       return;
     }
 
     const expenseData = {
-      ...form,
+      cropId: form.cropId,
+      category: form.category,
       amount: Number(form.amount),
+      date: form.date,
       note: form.note.trim()
     };
 
-    if (editingId !== null) {
+    setSaving(true);
+    setError("");
+    setMessage("");
 
-      if (!isAdmin) return;
+    try {
+      const isEditing = editingId !== null;
 
-      dispatch(
-        updateExpense({
-          ...expenseData,
-          id: editingId
-        })
+      const response = await fetch(
+        isEditing
+          ? `${API_URL}/${editingId}`
+          : API_URL,
+        {
+          method: isEditing ? "PUT" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${getToken()}`
+          },
+          body: JSON.stringify(expenseData)
+        }
       );
 
-      setMessage("Expense updated successfully.");
+      const result = await response.json();
 
-    } else {
+      if (!response.ok || !result.succeeded) {
+        throw new Error(
+          result.message || "Failed to save expense."
+        );
+      }
 
-      dispatch(
-        addExpense({
-          ...expenseData,
-          id: Date.now().toString()
-        })
-      );
+      const savedExpense = {
+        ...result.data,
+        amount: Number(result.data.amount)
+      };
 
-      setMessage("Expense added successfully.");
+      if (isEditing) {
+        setExpenseRecords((prev) =>
+          prev.map((item) =>
+            String(item.id) === String(editingId)
+              ? savedExpense
+              : item
+          )
+        );
+
+        dispatch(updateExpense(savedExpense));
+        setMessage("Expense updated successfully.");
+      } else {
+        setExpenseRecords((prev) => [
+          savedExpense,
+          ...prev
+        ]);
+
+        dispatch(addExpense(savedExpense));
+        setMessage("Expense added successfully.");
+      }
+
+      resetForm();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
     }
-
-    resetForm();
   };
 
   const handleEdit = (expense) => {
@@ -127,14 +245,15 @@ function Expenses() {
     setEditingId(expense.id);
 
     setForm({
-      cropId: String(expense.cropId),
+      cropId: String(expense.cropId || ""),
       category: expense.category,
       amount: String(expense.amount),
-      date: expense.date,
+      date: expense.date || "",
       note: expense.note || ""
     });
 
     setMessage("");
+    setError("");
 
     window.scrollTo({
       top: 0,
@@ -142,31 +261,62 @@ function Expenses() {
     });
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (!isAdmin) return;
 
     const confirmed = window.confirm(
       "Are you sure you want to delete this expense?"
     );
 
-    if (confirmed) {
+    if (!confirmed) return;
+
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/${id}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${getToken()}`
+          }
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.succeeded) {
+        throw new Error(
+          result.message || "Failed to delete expense."
+        );
+      }
+
+      setExpenseRecords((prev) =>
+        prev.filter(
+          (item) => String(item.id) !== String(id)
+        )
+      );
+
       dispatch(deleteExpense(id));
       setMessage("Expense deleted successfully.");
+    } catch (err) {
+      setError(err.message);
     }
   };
 
-  const totalExpenses = expenses.reduce(
-    (total, expense) => total + Number(expense.amount || 0),
+  const totalExpenses = expenseRecords.reduce(
+    (total, expense) =>
+      total + Number(expense.amount || 0),
     0
   );
 
   const categoriesUsed = new Set(
-    expenses.map((expense) => expense.category)
+    expenseRecords.map((expense) => expense.category)
   ).size;
 
-  const filteredExpenses = expenses.filter((expense) => {
-
-    const cropName = getCropName(expense.cropId);
+  const filteredExpenses = expenseRecords.filter((expense) => {
+    const cropName = isPayrollExpense(expense) ? "Staff Payroll" : getCropName(expense.cropId);
 
     const matchesSearch =
       cropName.toLowerCase().includes(search.toLowerCase()) ||
@@ -182,11 +332,11 @@ function Expenses() {
 
   const categoryTotals = categories.map((category) => ({
     category,
-
-    amount: expenses
+    amount: expenseRecords
       .filter((expense) => expense.category === category)
       .reduce(
-        (total, expense) => total + Number(expense.amount || 0),
+        (total, expense) =>
+          total + Number(expense.amount || 0),
         0
       )
   }));
@@ -205,9 +355,6 @@ function Expenses() {
       }}
     >
       <Container maxWidth="xl">
-
-        {/* PAGE HEADER */}
-
         <Box sx={{ mb: 4 }}>
           <Typography
             variant="h4"
@@ -225,7 +372,21 @@ function Expenses() {
           </Typography>
         </Box>
 
-        {/* SUMMARY CARDS */}
+        {error && (
+          <Paper sx={{ p: 2, mb: 3, bgcolor: "#ffebee" }}>
+            <Typography color="error">
+              {error}
+            </Typography>
+          </Paper>
+        )}
+
+        {message && (
+          <Paper sx={{ p: 2, mb: 3, bgcolor: "#e8f5e9" }}>
+            <Typography color="success.main">
+              {message}
+            </Typography>
+          </Paper>
+        )}
 
         <Box
           sx={{
@@ -245,14 +406,13 @@ function Expenses() {
             },
             {
               title: "Expense Records",
-              value: expenses.length
+              value: expenseRecords.length
             },
             {
               title: "Categories Used",
               value: categoriesUsed
             }
           ].map((item) => (
-
             <Paper
               key={item.title}
               sx={{
@@ -277,11 +437,8 @@ function Expenses() {
                 {item.value}
               </Typography>
             </Paper>
-
           ))}
         </Box>
-
-        {/* EXPENSE FORM */}
 
         <Paper
           sx={{
@@ -305,7 +462,6 @@ function Expenses() {
           </Typography>
 
           <Box component="form" onSubmit={handleSubmit}>
-
             <Box
               sx={{
                 display: "grid",
@@ -316,7 +472,6 @@ function Expenses() {
                 gap: 2
               }}
             >
-
               <TextField
                 select
                 label="Select Crop"
@@ -419,21 +574,7 @@ function Expenses() {
                   }
                 }}
               />
-
             </Box>
-
-            {message && (
-              <Typography
-                sx={{
-                  mt: 2,
-                  color: message.startsWith("Please")
-                    ? "error.main"
-                    : "success.main"
-                }}
-              >
-                {message}
-              </Typography>
-            )}
 
             <Box
               sx={{
@@ -445,6 +586,7 @@ function Expenses() {
               <Button
                 type="submit"
                 variant="contained"
+                disabled={!isAdmin || saving}
                 sx={{
                   bgcolor: "#1b5e20",
                   px: 3,
@@ -455,7 +597,9 @@ function Expenses() {
                   }
                 }}
               >
-                {editingId !== null
+                {saving
+                  ? "Saving..."
+                  : editingId !== null
                   ? "Update Expense"
                   : "Save Expense"}
               </Button>
@@ -469,82 +613,16 @@ function Expenses() {
                 </Button>
               )}
             </Box>
-
           </Box>
         </Paper>
 
-      {/* CATEGORY CHART */}
-
-<Paper
-  sx={{
-    p: { xs: 3, md: 4 },
-    borderRadius: 3,
-    mb: 4,
-    border: "1px solid #e3ebe4",
-    boxShadow: "0 6px 24px rgba(0,0,0,0.04)"
-  }}
->
-  <Box
-    sx={{
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      flexWrap: "wrap",
-      gap: 2,
-      mb: 3
-    }}
-  >
-    <Box>
-      <Typography
-        variant="h6"
-        fontWeight={700}
-        sx={{ color: "#183b29" }}
-      >
-        Expense Breakdown
-      </Typography>
-
-      <Typography
-        variant="body2"
-        color="text.secondary"
-        sx={{ mt: 0.5 }}
-      >
-        Category-wise farming expenses
-      </Typography>
-    </Box>
-
-    <Chip
-      label={`${categoryTotals.filter(
-        (item) => item.amount > 0
-      ).length} Active Categories`}
-      sx={{
-        bgcolor: "#e8f5e9",
-        color: "#1b5e20",
-        fontWeight: 600
-      }}
-    />
-  </Box>
-
-  <Divider sx={{ mb: 3 }} />
-
-  {totalExpenses === 0 ? (
-    <Box sx={{ textAlign: "center", py: 4 }}>
-      <Typography color="text.secondary">
-        No expenses recorded yet.
-      </Typography>
-    </Box>
-  ) : (
-    categoryTotals
-      .filter((item) => item.amount > 0)
-      .sort((a, b) => b.amount - a.amount)
-      .map((item) => (
-        <Box
-          key={item.category}
+        <Paper
           sx={{
-            mb: 1,
-            p: 1.5,
-            bgcolor: "#f8fbf8",
-            border: "1px solid #e6eee6",
-            borderRadius: 2
+            p: { xs: 3, md: 4 },
+            borderRadius: 3,
+            mb: 4,
+            border: "1px solid #e3ebe4",
+            boxShadow: "0 6px 24px rgba(0,0,0,0.04)"
           }}
         >
           <Box
@@ -552,304 +630,331 @@ function Expenses() {
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              mb: 1
+              flexWrap: "wrap",
+              gap: 2,
+              mb: 3
             }}
           >
-            <Typography
-              fontWeight={600}
-              sx={{ color: "#183b29" }}
-            >
-              {item.category}
-            </Typography>
+            <Box>
+              <Typography
+                variant="h6"
+                fontWeight={700}
+                sx={{ color: "#183b29" }}
+              >
+                Expense Breakdown
+              </Typography>
 
-            <Typography
-              fontWeight={700}
-              sx={{ color: "#1b5e20" }}
-            >
-              {formatMoney(item.amount)}
-            </Typography>
-          </Box>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 0.5 }}
+              >
+                Category-wise farming expenses
+              </Typography>
+            </Box>
 
-          <Typography
-            variant="caption"
-            color="text.secondary"
-          >
-            {Math.round(
-              (item.amount / totalExpenses) * 100
-            )}% of total expenses
-          </Typography>
-
-          <Box
-            sx={{
-              mt: 1,
-              height: 7,
-              bgcolor: "#e2ece3",
-              borderRadius: 5,
-              overflow: "hidden"
-            }}
-          >
-            <Box
+            <Chip
+              label={`${
+                categoryTotals.filter(
+                  (item) => item.amount > 0
+                ).length
+              } Active Categories`}
               sx={{
-                width: `${
-                  (item.amount / highestCategoryAmount) * 100
-                }%`,
-                height: "100%",
-                background:
-                  "linear-gradient(90deg, #1b5e20, #66bb6a)",
-                borderRadius: 5
+                bgcolor: "#e8f5e9",
+                color: "#1b5e20",
+                fontWeight: 600
               }}
             />
           </Box>
+
+          <Divider sx={{ mb: 3 }} />
+
+          {totalExpenses === 0 ? (
+            <Box sx={{ textAlign: "center", py: 4 }}>
+              <Typography color="text.secondary">
+                No expenses recorded yet.
+              </Typography>
+            </Box>
+          ) : (
+            categoryTotals
+              .filter((item) => item.amount > 0)
+              .sort((a, b) => b.amount - a.amount)
+              .map((item) => (
+                <Box
+                  key={item.category}
+                  sx={{
+                    mb: 1,
+                    p: 1.5,
+                    bgcolor: "#f8fbf8",
+                    border: "1px solid #e6eee6",
+                    borderRadius: 2
+                  }}
+                >
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      mb: 1
+                    }}
+                  >
+                    <Typography
+                      fontWeight={600}
+                      sx={{ color: "#183b29" }}
+                    >
+                      {item.category}
+                    </Typography>
+
+                    <Typography
+                      fontWeight={700}
+                      sx={{ color: "#1b5e20" }}
+                    >
+                      {formatMoney(item.amount)}
+                    </Typography>
+                  </Box>
+
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                  >
+                    {Math.round(
+                      (item.amount / totalExpenses) * 100
+                    )}% of total expenses
+                  </Typography>
+
+                  <Box
+                    sx={{
+                      mt: 1,
+                      height: 7,
+                      bgcolor: "#e2ece3",
+                      borderRadius: 5,
+                      overflow: "hidden"
+                    }}
+                  >
+                    <Box
+                      sx={{
+                        width: `${
+                          (item.amount /
+                            highestCategoryAmount) * 100
+                        }%`,
+                        height: "100%",
+                        background:
+                          "linear-gradient(90deg, #1b5e20, #66bb6a)",
+                        borderRadius: 5
+                      }}
+                    />
+                  </Box>
+                </Box>
+              ))
+          )}
+        </Paper>
+
+        <Box sx={{ mb: 3 }}>
+          <Typography
+            variant="h5"
+            fontWeight={700}
+            sx={{
+              color: "#183b29",
+              mb: 0.5
+            }}
+          >
+            Expense Records
+          </Typography>
+
+          <Typography
+            variant="body2"
+            color="text.secondary"
+          >
+            View and manage recorded farming expenses.
+          </Typography>
         </Box>
-      ))
-  )}
-</Paper>
 
-       {/* EXPENSE RECORDS */}
-
-<Box sx={{ mb: 3 }}>
-  <Typography
-    variant="h5"
-    fontWeight={700}
-    sx={{
-      color: "#183b29",
-      mb: 0.5
-    }}
-  >
-    Expense Records
-  </Typography>
-
-  <Typography
-    variant="body2"
-    color="text.secondary"
-  >
-    View and manage recorded farming expenses.
-  </Typography>
-</Box>
-
-{/* SEARCH AND FILTER */}
-
-<Box
-  sx={{
-    display: "flex",
-    flexDirection: {
-      xs: "column",
-      md: "row"
-    },
-    gap: 2,
-    mb: 3
-  }}
->
-  <TextField
-    placeholder="Search by crop or notes..."
-    value={search}
-    onChange={(e) => setSearch(e.target.value)}
-    size="small"
-    sx={{
-      flex: 1,
-      bgcolor: "white"
-    }}
-  />
-
-  <TextField
-    select
-    label="Filter Category"
-    value={filter}
-    onChange={(e) => setFilter(e.target.value)}
-    size="small"
-    sx={{
-      minWidth: 200,
-      bgcolor: "white"
-    }}
-  >
-    <MenuItem value="All">
-      All Categories
-    </MenuItem>
-
-    {categories.map((category) => (
-      <MenuItem
-        key={category}
-        value={category}
-      >
-        {category}
-      </MenuItem>
-    ))}
-  </TextField>
-</Box>
-
-{/* EMPTY STATE */}
-
-{filteredExpenses.length === 0 && (
-  <Paper
-    sx={{
-      p: 3,
-      borderRadius: 2,
-      textAlign: "center",
-      border: "1px solid #e3ebe4",
-      boxShadow: "none"
-    }}
-  >
-    <Typography color="text.secondary">
-      No expense records found.
-    </Typography>
-  </Paper>
-)}
-
-{/* EXPENSE CARDS */}
-
-<Box
-  sx={{
-    display: "grid",
-    gridTemplateColumns: {
-      xs: "1fr",
-      sm: "repeat(2, minmax(0, 1fr))",
-      lg: "repeat(3, minmax(0, 1fr))"
-    },
-    gap: 2
-  }}
->
-  {filteredExpenses.map((expense) => (
-    <Paper
-      key={expense.id}
-      elevation={0}
-      sx={{
-        p: 2.2,
-        borderRadius: 2.5,
-        border: "1px solid #dfe9e0",
-        backgroundColor: "#ffffff",
-        boxShadow: "0 3px 12px rgba(0,0,0,0.035)",
-        transition: "0.2s",
-        "&:hover": {
-          borderColor: "#a5c9a8",
-          boxShadow: "0 5px 18px rgba(0,0,0,0.07)"
-        }
-      }}
-    >
-
-      {/* CROP AND CATEGORY */}
-
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          gap: 1,
-          mb: 1.5
-        }}
-      >
-        <Typography
-          variant="subtitle1"
-          fontWeight={700}
-          sx={{
-            color: "#183b29",
-            overflowWrap: "anywhere"
-          }}
-        >
-          {getCropName(expense.cropId)}
-        </Typography>
-
-        <Chip
-          label={expense.category}
-          size="small"
-          variant="outlined"
-          sx={{
-            color: "#2e7d32",
-            borderColor: "#b9d8bd",
-            fontSize: 12,
-            height: 25
-          }}
-        />
-      </Box>
-
-      {/* AMOUNT */}
-
-      <Typography
-        variant="h6"
-        fontWeight={700}
-        sx={{
-          color: "#1b5e20",
-          mb: 1.5
-        }}
-      >
-        {formatMoney(expense.amount)}
-      </Typography>
-
-      <Divider sx={{ mb: 1.5 }} />
-
-      {/* DATE */}
-
-      <Typography
-        variant="body2"
-        sx={{
-          mb: 1,
-          color: "#52635a"
-        }}
-      >
-        <b>Date:</b> {expense.date}
-      </Typography>
-
-      {/* NOTES */}
-
-      <Typography
-        variant="body2"
-        sx={{
-          mb: isAdmin ? 2 : 0,
-          color: "#52635a",
-          overflowWrap: "anywhere"
-        }}
-      >
-        <b>Notes:</b> {expense.note || "No notes"}
-      </Typography>
-
-      {/* ADMIN ACTIONS */}
-
-      {isAdmin && (
         <Box
           sx={{
             display: "flex",
-            gap: 1,
-            flexWrap: "wrap"
+            flexDirection: {
+              xs: "column",
+              md: "row"
+            },
+            gap: 2,
+            mb: 3
           }}
         >
-          <Button
-            variant="outlined"
+          <TextField
+            placeholder="Search by crop or notes..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             size="small"
-            onClick={() => handleEdit(expense)}
             sx={{
-              color: "#1b5e20",
-              borderColor: "#a5c9a8",
-              textTransform: "none",
-              borderRadius: 1.5,
-              px: 2,
-              "&:hover": {
-                borderColor: "#1b5e20",
-                bgcolor: "#f0f7f1"
-              }
+              flex: 1,
+              bgcolor: "white"
             }}
-          >
-            Edit
-          </Button>
+          />
 
-          <Button
-            variant="outlined"
+          <TextField
+            select
+            label="Filter Category"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
             size="small"
-            color="error"
-            onClick={() => handleDelete(expense.id)}
             sx={{
-              textTransform: "none",
-              borderRadius: 1.5,
-              px: 2
+              minWidth: 200,
+              bgcolor: "white"
             }}
           >
-            Delete
-          </Button>
+            <MenuItem value="All">
+              All Categories
+            </MenuItem>
+
+            {categories.map((category) => (
+              <MenuItem
+                key={category}
+                value={category}
+              >
+                {category}
+              </MenuItem>
+            ))}
+          </TextField>
         </Box>
-      )}
 
-    </Paper>
-  ))}
-</Box>
+        {loading ? (
+          <Typography>
+            Loading expenses...
+          </Typography>
+        ) : filteredExpenses.length === 0 ? (
+          <Paper
+            sx={{
+              p: 3,
+              borderRadius: 2,
+              textAlign: "center",
+              border: "1px solid #e3ebe4"
+            }}
+          >
+            <Typography color="text.secondary">
+              No expense records found.
+            </Typography>
+          </Paper>
+        ) : (
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "1fr",
+                sm: "repeat(2, minmax(0, 1fr))",
+                lg: "repeat(3, minmax(0, 1fr))"
+              },
+              gap: 2
+            }}
+          >
+            {filteredExpenses.map((expense) => (
+              <Paper
+                key={expense.id}
+                elevation={0}
+                sx={{
+                  p: 2.2,
+                  borderRadius: 2.5,
+                  border: "1px solid #dfe9e0",
+                  backgroundColor: "#ffffff",
+                  boxShadow:
+                    "0 3px 12px rgba(0,0,0,0.035)"
+                }}
+              >
+                <Box
+                  sx={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 1,
+                    mb: 1.5
+                  }}
+                >
+                  <Typography
+                    variant="subtitle1"
+                    fontWeight={700}
+                    sx={{ color: "#183b29" }}
+                  >
+                    {isPayrollExpense(expense) ? "Staff Payroll" : getCropName(expense.cropId)}
+                  </Typography>
 
+                  <Chip
+                    label={expense.category}
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      color: "#2e7d32",
+                      borderColor: "#b9d8bd"
+                    }}
+                  />
+                </Box>
+
+                <Typography
+                  variant="h6"
+                  fontWeight={700}
+                  sx={{
+                    color: "#1b5e20",
+                    mb: 1.5
+                  }}
+                >
+                  {formatMoney(expense.amount)}
+                </Typography>
+
+                <Divider sx={{ mb: 1.5 }} />
+
+                <Typography
+                  variant="body2"
+                  sx={{ mb: 1 }}
+                >
+                  <b>Date:</b> {expense.date}
+                </Typography>
+
+                <Typography
+                  variant="body2"
+                  sx={{ mb: isAdmin ? 2 : 0 }}
+                >
+                  <b>Notes:</b>{" "}
+                  {displayExpenseNote(expense.note)}
+                </Typography>
+
+                {isAdmin && (
+                  <Box
+                    sx={{
+                      display: "flex",
+                      gap: 1,
+                      flexWrap: "wrap"
+                    }}
+                  >
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() => handleEdit(expense)}
+                      sx={{
+                        color: "#1b5e20",
+                        borderColor: "#a5c9a8",
+                        textTransform: "none"
+                      }}
+                    >
+                      Edit
+                    </Button>
+
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      color="error"
+                      onClick={() =>
+                        handleDelete(expense.id)
+                      }
+                      sx={{
+                        textTransform: "none"
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </Box>
+                )}
+              </Paper>
+            ))}
+          </Box>
+        )}
       </Container>
     </Box>
   );

@@ -50,60 +50,107 @@ function Buyers({ buyers = [], onSaveBuyer, setBuyers }) {
     setError("");
   };
 
-  const handleUpdate = () => {
-    if (!isAdmin || editingIndex === null) return;
+ 
+const handleUpdate = async () => {
+  if (!isAdmin || editingIndex === null) return;
 
-    const name = editForm.name.trim();
-    const phone = editForm.phone.trim();
+  const buyer = buyers[editingIndex];
+  if (!buyer) return;
 
-    if (
-      name.length < 3 ||
-      !/^[A-Za-z ]+$/.test(name)
-    ) {
-      setError("Enter a valid name with at least 3 letters.");
-      return;
+  const name = editForm.name.trim();
+  const phone = editForm.phone.trim();
+
+  if (name.length < 3 || !/^[A-Za-z ]+$/.test(name)) {
+    setError("Enter a valid name with at least 3 letters.");
+    return;
+  }
+
+  if (!/^03\d{9}$/.test(phone)) {
+    setError("Enter a valid 11-digit contact number.");
+    return;
+  }
+
+  try {
+    const session = JSON.parse(
+      localStorage.getItem("agri_session") || "{}"
+    );
+
+    const response = await fetch(
+      `http://localhost:5000/api/buyers/${buyer.id}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.token}`
+        },
+        body: JSON.stringify({
+          name,
+          phone,
+          businessName: editForm.businessName.trim()
+        })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok || !result.succeeded) {
+      throw new Error(result.message || "Update failed");
     }
 
-    if (!/^03\d{9}$/.test(phone)) {
-      setError("Enter a valid 11-digit contact number.");
-      return;
-    }
-
-    setBuyers((previousBuyers) =>
-      previousBuyers.map((buyer, index) =>
-        index === editingIndex
-          ? {
-              ...buyer,
-              name,
-              phone,
-              businessName: editForm.businessName.trim()
-            }
-          : buyer
+    setBuyers(
+      buyers.map((item) =>
+        item.id === buyer.id ? result.data : item
       )
     );
 
     closeEdit();
-  };
+  } catch (error) {
+    setError(error.message || "Unable to update buyer.");
+  }
+};
 
-  const handleDelete = (index) => {
-    if (!isAdmin) return;
+  
+const handleDelete = async (index) => {
+  if (!isAdmin) return;
 
-    const buyer = buyers[index];
+  const buyer = buyers[index];
+  if (!buyer) return;
 
-    if (!buyer) return;
+  const confirmed = window.confirm(
+    `Are you sure you want to delete ${buyer.name}? Existing orders may still reference this buyer.`
+  );
 
-    const confirmed = window.confirm(
-      `Are you sure you want to delete ${buyer.name}? Existing orders may still reference this buyer.`
+  if (!confirmed) return;
+
+  try {
+    const session = JSON.parse(
+      localStorage.getItem("agri_session") || "{}"
     );
 
-    if (!confirmed) return;
-
-    setBuyers((previousBuyers) =>
-      previousBuyers.filter(
-        (_, buyerIndex) => buyerIndex !== index
-      )
+    const response = await fetch(
+      `http://localhost:5000/api/buyers/${buyer.id}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${session.token}`
+        }
+      }
     );
-  };
+
+    const result = await response.json();
+
+    if (!response.ok || !result.succeeded) {
+      throw new Error(result.message || "Delete failed");
+    }
+
+    setBuyers(
+      buyers.filter((item) => item.id !== buyer.id)
+    );
+  } catch (error) {
+    alert(error.message || "Unable to delete buyer.");
+  }
+};
+
 
   return (
     <Box

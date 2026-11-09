@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 
@@ -23,7 +24,6 @@ import {
 
 import { setOrders } from "../store/reducers/ordersReducer";
 
-
 const formatMoney = (amount) =>
   `Rs. ${Number(amount).toLocaleString("en-PK", {
     maximumFractionDigits: 2
@@ -31,10 +31,8 @@ const formatMoney = (amount) =>
 
 const hasPrice = (order) => {
   const total = Number(order.totalAmount);
-
   return Number.isFinite(total) && total > 0;
 };
-
 
 const getPricePerKg = (order) => {
   const quantity = Number(order.quantity);
@@ -48,15 +46,14 @@ const getPricePerKg = (order) => {
 
 function SupplierOrders({ orders = [], onMarkDelivered }) {
   const dispatch = useDispatch();
-
   const role = useSelector((state) => state.auth.role);
-
   const isAdmin = role === "Admin";
 
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [price, setPrice] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const handleOpenPrice = (order) => {
     if (!isAdmin) return;
@@ -64,25 +61,25 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
     const existingPrice = getPricePerKg(order);
 
     setSelectedOrder(order);
-
     setPrice(
       existingPrice === null
         ? ""
         : String(Number(existingPrice.toFixed(2)))
     );
-
     setError("");
     setMessage("");
   };
 
   const handleClosePrice = () => {
+    if (saving) return;
+
     setSelectedOrder(null);
     setPrice("");
     setError("");
   };
 
-  const handleSavePrice = () => {
-    if (!isAdmin || !selectedOrder) return;
+  const handleSavePrice = async () => {
+    if (!isAdmin || !selectedOrder || saving) return;
 
     const sellingPrice = Number(price);
     const quantity = Number(selectedOrder.quantity);
@@ -104,36 +101,74 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
       return;
     }
 
-   
     const totalAmount = Number(
       (quantity * sellingPrice).toFixed(2)
     );
 
-   
-    const updatedOrders = orders.map((order) => {
-      if (
-        String(order.id) === String(selectedOrder.id)
-      ) {
-        return {
-          ...order,
-          pricePerKg: sellingPrice,
-          totalAmount
-        };
+    setSaving(true);
+    setError("");
+
+    try {
+      const session = JSON.parse(
+        localStorage.getItem("agri_session") || "{}"
+      );
+
+      if (!session.token) {
+        throw new Error("Session expired. Please login again.");
       }
 
-      return order;
-    });
+      const response = await fetch(
+        `http://localhost:5000/api/orders/${selectedOrder.id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.token}`
+          },
+          body: JSON.stringify({
+            pricePerKg: sellingPrice,
+            totalAmount
+          })
+        }
+      );
 
-    
-    dispatch(setOrders(updatedOrders));
+      const result = await response.json();
 
-    setMessage(
-      `Selling price saved successfully. Order total: ${formatMoney(
-        totalAmount
-      )}`
-    );
+      if (!response.ok || !result.succeeded) {
+        throw new Error(
+          result.message || "Failed to save price."
+        );
+      }
 
-    handleClosePrice();
+      const updatedOrders = orders.map((order) => {
+        if (String(order.id) === String(selectedOrder.id)) {
+          return {
+            ...order,
+            pricePerKg: Number(result.data.pricePerKg),
+            totalAmount: Number(result.data.totalAmount)
+          };
+        }
+
+        return order;
+      });
+
+      dispatch(setOrders(updatedOrders));
+
+      setMessage(
+        `Selling price saved successfully. Order total: ${formatMoney(
+          totalAmount
+        )}`
+      );
+
+      setSelectedOrder(null);
+      setPrice("");
+    } catch (err) {
+      setError(
+        err.message || "Unable to save selling price."
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleMarkDelivered = (order) => {
@@ -197,10 +232,7 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
       )}
 
       {!isAdmin && (
-        <Typography
-          variant="body2"
-          color="text.secondary"
-        >
+        <Typography variant="body2" color="text.secondary">
           View Only
         </Typography>
       )}
@@ -215,8 +247,6 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
 
   return (
     <Box sx={{ width: "100%" }}>
-
-
       <Box sx={{ mb: 3 }}>
         <Typography
           variant="h5"
@@ -268,7 +298,6 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
         </Paper>
       )}
 
-
       {orders.length > 0 && (
         <Box
           sx={{
@@ -303,7 +332,7 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
                   fontWeight={700}
                   sx={{ color: "#183b29" }}
                 >
-                  {order.name}
+                  {order.name || "Unknown Buyer"}
                 </Typography>
 
                 <Chip
@@ -318,7 +347,7 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
               </Box>
 
               <Typography sx={{ mb: 1 }}>
-                <b>Crop:</b> {order.crop}
+                <b>Crop:</b> {order.crop || "Unknown Crop"}
               </Typography>
 
               <Typography sx={{ mb: 1 }}>
@@ -357,7 +386,6 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
         </Box>
       )}
 
-
       {orders.length > 0 && (
         <TableContainer
           component={Paper}
@@ -372,7 +400,6 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
           }}
         >
           <Table sx={{ minWidth: 1050 }}>
-
             <TableHead sx={{ bgcolor: "#e8f5e9" }}>
               <TableRow>
                 <TableCell><b>Buyer</b></TableCell>
@@ -391,13 +418,12 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
             <TableBody>
               {orders.map((order) => (
                 <TableRow key={order.id} hover>
-
                   <TableCell>
-                    {order.name}
+                    {order.name || "Unknown Buyer"}
                   </TableCell>
 
                   <TableCell>
-                    {order.crop}
+                    {order.crop || "Unknown Crop"}
                   </TableCell>
 
                   <TableCell>
@@ -409,16 +435,16 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
                   </TableCell>
 
                   <TableCell>
-                    {hasPrice(order)
-                      ? formatMoney(getPricePerKg(order))
-                      : (
-                        <Chip
-                          label="Missing"
-                          size="small"
-                          color="warning"
-                          variant="outlined"
-                        />
-                      )}
+                    {hasPrice(order) ? (
+                      formatMoney(getPricePerKg(order))
+                    ) : (
+                      <Chip
+                        label="Missing"
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                      />
+                    )}
                   </TableCell>
 
                   <TableCell>
@@ -451,14 +477,12 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
                   <TableCell>
                     {renderActions(order)}
                   </TableCell>
-
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </TableContainer>
       )}
-
 
       <Dialog
         open={Boolean(selectedOrder)}
@@ -478,10 +502,8 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
         </DialogTitle>
 
         <DialogContent>
-
           {selectedOrder && (
             <Box sx={{ mt: 1 }}>
-
               <Typography sx={{ mb: 1 }}>
                 <b>Crop:</b> {selectedOrder.crop}
               </Typography>
@@ -547,15 +569,14 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
                     </Typography>
                   </Paper>
                 )}
-
             </Box>
           )}
-
         </DialogContent>
 
         <DialogActions sx={{ p: 3, pt: 1 }}>
           <Button
             onClick={handleClosePrice}
+            disabled={saving}
             sx={{ textTransform: "none" }}
           >
             Cancel
@@ -563,6 +584,7 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
 
           <Button
             onClick={handleSavePrice}
+            disabled={saving}
             variant="contained"
             sx={{
               bgcolor: "#1b5e20",
@@ -572,11 +594,10 @@ function SupplierOrders({ orders = [], onMarkDelivered }) {
               }
             }}
           >
-            Save Price
+            {saving ? "Saving..." : "Save Price"}
           </Button>
         </DialogActions>
       </Dialog>
-
     </Box>
   );
 }

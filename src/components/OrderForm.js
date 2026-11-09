@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 
 import {
@@ -24,7 +25,6 @@ function OrderForm({
   orders = [],
   onAddOrder
 }) {
-
   const [buyerId, setBuyerId] = useState("");
   const [cropId, setCropId] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -33,6 +33,7 @@ function OrderForm({
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const formatMoney = (amount) => {
     return `Rs. ${Number(amount).toLocaleString("en-PK", {
@@ -53,7 +54,8 @@ function OrderForm({
     ? orders
         .filter(
           (order) =>
-            String(order.cropId) === String(selectedCrop.id)
+            String(order.cropId) === String(selectedCrop.id) &&
+            order.status !== "Cancelled"
         )
         .reduce(
           (total, order) =>
@@ -65,7 +67,7 @@ function OrderForm({
   const availableStock = selectedCrop
     ? Math.max(
         0,
-        Number(selectedCrop.harvestQty) - bookedQuantity
+        Number(selectedCrop.harvestQty || 0) - bookedQuantity
       )
     : 0;
 
@@ -80,8 +82,10 @@ function OrderForm({
       ? Math.round(orderQuantity * sellingPrice * 100) / 100
       : 0;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (saving) return;
 
     setError("");
     setSuccess("");
@@ -126,33 +130,79 @@ function OrderForm({
       return;
     }
 
-    const newOrder = {
-      id: Date.now(),
+    setSaving(true);
 
-      buyerId: selectedBuyer.id,
-      name: selectedBuyer.name,
+    try {
+      const session = JSON.parse(
+        localStorage.getItem("agri_session") || "{}"
+      );
 
-      cropId: selectedCrop.id,
-      crop: selectedCrop.name,
-      field: selectedCrop.field,
+      if (!session.token) {
+        throw new Error("Session expired. Please login again.");
+      }
 
-      quantity: orderQuantity,
-      pricePerKg: sellingPrice,
-      totalAmount: totalAmount,
+      const orderPayload = {
+        buyerId: selectedBuyer.id,
+        cropId: selectedCrop.id,
+        quantity: orderQuantity,
+        pricePerKg: sellingPrice,
+        totalAmount,
+        orderDate,
+        status: "Pending"
+      };
 
-      orderDate: orderDate,
-      status: "Pending"
-    };
+      const response = await fetch(
+        "http://localhost:5000/api/orders",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.token}`
+          },
+          body: JSON.stringify(orderPayload)
+        }
+      );
 
-    onAddOrder(newOrder);
+      const result = await response.json();
 
-    setBuyerId("");
-    setCropId("");
-    setQuantity("");
-    setPricePerKg("");
-    setOrderDate(todayIso());
+      if (!response.ok || !result.succeeded) {
+        throw new Error(
+          result.message || "Failed to save order."
+        );
+      }
 
-    setSuccess("Order placed successfully!");
+      const savedOrder = {
+        ...result.data,
+        buyerId: selectedBuyer.id,
+        name: selectedBuyer.name,
+        cropId: selectedCrop.id,
+        crop: selectedCrop.name,
+        field: selectedCrop.field,
+        quantity: orderQuantity,
+        pricePerKg: sellingPrice,
+        totalAmount,
+        orderDate,
+        status: result.data.status || "Pending"
+      };
+
+      if (onAddOrder) {
+        onAddOrder(savedOrder);
+      }
+
+      setBuyerId("");
+      setCropId("");
+      setQuantity("");
+      setPricePerKg("");
+      setOrderDate(todayIso());
+
+      setSuccess("Order saved to database successfully!");
+    } catch (err) {
+      setError(
+        err.message || "Unable to save order."
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -164,7 +214,6 @@ function OrderForm({
       }}
     >
       <Container maxWidth="md">
-
         <Box sx={{ mb: 4 }}>
           <Typography
             variant="h4"
@@ -187,7 +236,6 @@ function OrderForm({
           }}
         >
           <CardContent sx={{ p: { xs: 3, md: 5 } }}>
-
             <Box
               sx={{
                 display: "flex",
@@ -251,7 +299,6 @@ function OrderForm({
                 gap: 3
               }}
             >
-
               <TextField
                 select
                 label="Select Registered Buyer"
@@ -386,11 +433,12 @@ function OrderForm({
                 >
                   {quantity || "0"} kg ×{" "}
                   {formatMoney(
-                    sellingPrice > 0 && Number.isFinite(sellingPrice)
+                    sellingPrice > 0 &&
+                    Number.isFinite(sellingPrice)
                       ? sellingPrice
                       : 0
-                  )}
-                  {" "}per kg
+                  )}{" "}
+                  per kg
                 </Typography>
               </Box>
 
@@ -417,7 +465,7 @@ function OrderForm({
                 type="submit"
                 variant="contained"
                 size="large"
-                disabled={buyers.length === 0}
+                disabled={buyers.length === 0 || saving}
                 sx={{
                   bgcolor: "#1b5e20",
                   py: 1.6,
@@ -428,14 +476,11 @@ function OrderForm({
                   }
                 }}
               >
-                Submit Order
+                {saving ? "Saving Order..." : "Submit Order"}
               </Button>
-
             </Box>
-
           </CardContent>
         </Card>
-
       </Container>
     </Box>
   );

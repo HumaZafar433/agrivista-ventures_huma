@@ -148,16 +148,12 @@ function SectionHeader({
 }
 
 
-// MAIN COMPONENT
-
 function DashboardExtras({ onOpenEquipment }) {
   const dispatch = useDispatch();
 
   const today = getToday();
   const month = today.slice(0, 7);
 
-
-  // LOAD REDUX DATA
 
   useEffect(() => {
     dispatch(GETWORKERS());
@@ -166,8 +162,6 @@ function DashboardExtras({ onOpenEquipment }) {
     dispatch(GETMAINTENANCE());
   }, [dispatch]);
 
-
-  // REDUX SELECTORS
 
   const workforce = useSelector((state) =>
     selectWorkforceToday(state, today)
@@ -186,7 +180,6 @@ function DashboardExtras({ onOpenEquipment }) {
   const serviceDue = useSelector(selectServiceDue);
 
 
-  // SUMMARY CARDS
 
   const summaryCards = [
     {
@@ -236,7 +229,6 @@ function DashboardExtras({ onOpenEquipment }) {
   ];
 
 
-  // CHART SCALE
 
   const maxAttendance = Math.max(
     1,
@@ -255,7 +247,6 @@ function DashboardExtras({ onOpenEquipment }) {
       }}
     >
 
-      {/* WORKFORCE & EQUIPMENT HEADING */}
 
       <SectionHeader
         icon={faTractor}
@@ -263,8 +254,6 @@ function DashboardExtras({ onOpenEquipment }) {
         subtitle="Workers, attendance, payroll and machinery monitoring"
       />
 
-
-      {/* PROFESSIONAL SUMMARY CARDS */}
 
       <Box
         sx={{
@@ -338,7 +327,6 @@ function DashboardExtras({ onOpenEquipment }) {
       </Box>
 
 
-      {/* DASHBOARD ALERTS */}
 
       {workforce.highAbsence && (
         <Alert
@@ -368,8 +356,6 @@ function DashboardExtras({ onOpenEquipment }) {
         </Alert>
       )}
 
-
-      {/* WEEKLY ATTENDANCE */}
 
       <Paper
         elevation={0}
@@ -408,9 +394,6 @@ function DashboardExtras({ onOpenEquipment }) {
             </Box>
           }
         />
-
-
-        {/* COMPACT ATTENDANCE CARDS */}
 
         <Box sx={{ overflowX: "auto", pb: 1 }}>
           <Box
@@ -457,7 +440,6 @@ function DashboardExtras({ onOpenEquipment }) {
                   </Typography>
 
 
-                  {/* BARS */}
 
 <Box
   sx={{
@@ -509,7 +491,7 @@ function DashboardExtras({ onOpenEquipment }) {
     </BarChart>
   )}
 </Box>
-{/* DAILY COUNT */}
+
 
                   <Typography
                     variant="body2"
@@ -544,7 +526,7 @@ function DashboardExtras({ onOpenEquipment }) {
       </Paper>
 
 
-      {/* EQUIPMENT SERVICES */}
+      
 
       <Paper elevation={0} sx={sectionStyle}>
 
@@ -558,7 +540,6 @@ function DashboardExtras({ onOpenEquipment }) {
         <Box sx={{ overflowX: "auto" }}>
           <Box sx={{ minWidth: 760 }}>
 
-            {/* TABLE HEADER */}
 
             <Box
               sx={{

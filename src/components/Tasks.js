@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
+
+import { useCallback, useEffect, useState } from "react";
+import { useSelector } from "react-redux";
 
 import {
   Box,
@@ -9,24 +10,78 @@ import {
   TextField,
   Button,
   MenuItem,
-  Chip
+  Chip,
+  Alert,
+  CircularProgress
 } from "@mui/material";
 
-import {
-  addTask,
-  updateTask,
-  deleteTask,
-  markTaskDone
-} from "../store/reducers/tasksReducer";
+const TASKS_API = "http://localhost:5000/api/tasks";
+
+function getToken() {
+  try {
+    const session = JSON.parse(
+      localStorage.getItem("agri_session") || "{}"
+    );
+    return session.token || "";
+  } catch {
+    return "";
+  }
+}
+
+async function taskRequest(path = "", options = {}) {
+  const token = getToken();
+
+  if (!token) {
+    throw new Error(
+      "Login session missing. Please log in again."
+    );
+  }
+
+  let response;
+
+  try {
+    response = await fetch(`${TASKS_API}${path}`, {
+      ...options,
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+        ...options.headers
+      }
+    });
+  } catch {
+    throw new Error(
+      "Cannot connect to backend. Check node app.js on port 5000."
+    );
+  }
+
+  const result = await response.json().catch(() => null);
+
+  if (
+    !response.ok ||
+    !result ||
+    result.succeeded === false
+  ) {
+    throw new Error(
+      result?.message ||
+      `Task request failed (${response.status})`
+    );
+  }
+
+  return result;
+}
 
 function Tasks() {
-  const dispatch = useDispatch();
-
-  const tasks = useSelector((state) => state.tasks);
   const crops = useSelector((state) => state.crops);
   const role = useSelector((state) => state.auth.role);
 
   const isAdmin = role === "Admin";
+
+
+  const [tasks, setTasks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [apiError, setApiError] = useState("");
 
   const [form, setForm] = useState({
     title: "",
@@ -39,15 +94,55 @@ function Tasks() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("All");
 
+  const loadTasks = useCallback(async (showSpinner = true) => {
+    if (showSpinner) {
+      setLoading(true);
+    }
+
+    try {
+      const result = await taskRequest();
+
+      if (!Array.isArray(result.data)) {
+        throw new Error(
+          "Tasks API returned unexpected data."
+        );
+      }
+
+      setTasks(result.data);
+      setApiError("");
+    } catch (error) {
+      setApiError(error.message);
+    } finally {
+      if (showSpinner) {
+        setLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    loadTasks();
+  }, [loadTasks]);
+
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
   const getStatus = (task) => {
-    if (task.status === "Done") return "Done";
+    if (task.status === "Done") {
+      return "Done";
+    }
 
-    const dueDate = new Date(task.dueDate + "T00:00:00");
+    const dateText = String(
+      task.dueDate || ""
+    ).slice(0, 10);
 
-    if (dueDate < today) return "Overdue";
+    const dueDate = new Date(
+      dateText + "T00:00:00"
+    );
+
+    if (dueDate < today) {
+      return "Overdue";
+    }
 
     return "Pending";
   };
@@ -63,8 +158,11 @@ function Tasks() {
     setEditingId(null);
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (saving) return;
 
     if (
       !form.title.trim() ||
@@ -74,29 +172,45 @@ function Tasks() {
       return;
     }
 
-    if (editingId !== null) {
-      if (!isAdmin) return;
-
-      dispatch(
-        updateTask({
-          id: editingId,
-          ...form,
-          title: form.title.trim()
-        })
-      );
-    } else {
-      dispatch(
-        addTask({
-          id: Date.now().toString(),
-          ...form,
-          title: form.title.trim(),
-          status: "Pending"
-        })
-      );
+    if (editingId !== null && !isAdmin) {
+      return;
     }
 
-    resetForm();
+    const data = {
+      title: form.title.trim(),
+      type: form.type,
+      cropId: form.cropId,
+      dueDate: form.dueDate
+    };
+
+    setSaving(true);
+    setApiError("");
+
+    try {
+      if (editingId !== null) {
+        await taskRequest(`/${editingId}`, {
+          method: "PUT",
+          body: JSON.stringify(data)
+        });
+      } else {
+        await taskRequest("", {
+          method: "POST",
+          body: JSON.stringify({
+            ...data,
+            status: "Pending"
+          })
+        });
+      }
+
+      await loadTasks(false);
+      resetForm();
+    } catch (error) {
+      setApiError(error.message);
+    } finally {
+      setSaving(false);
+    }
   };
+
 
   const handleEdit = (task) => {
     if (!isAdmin) return;
@@ -106,8 +220,10 @@ function Tasks() {
     setForm({
       title: task.title,
       type: task.type,
-      cropId: task.cropId,
-      dueDate: task.dueDate
+      cropId: String(task.cropId || ""),
+      dueDate: String(
+        task.dueDate || ""
+      ).slice(0, 10)
     });
 
     window.scrollTo({
@@ -116,38 +232,92 @@ function Tasks() {
     });
   };
 
-  const handleDelete = (id) => {
-    if (!isAdmin) return;
+
+  const handleDelete = async (id) => {
+    if (!isAdmin || saving) return;
 
     const confirmed = window.confirm(
       "Are you sure you want to delete this task?"
     );
 
-    if (confirmed) {
-      dispatch(deleteTask(id));
+    if (!confirmed) return;
+
+    setSaving(true);
+    setApiError("");
+
+    try {
+      await taskRequest(`/${id}`, {
+        method: "DELETE"
+      });
+
+      await loadTasks(false);
+
+      if (String(editingId) === String(id)) {
+        resetForm();
+      }
+    } catch (error) {
+      setApiError(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleMarkDone = async (id) => {
+    if (!isAdmin || saving) return;
+
+    setSaving(true);
+    setApiError("");
+
+    try {
+      await taskRequest(`/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          status: "Done"
+        })
+      });
+
+      await loadTasks(false);
+    } catch (error) {
+      setApiError(error.message);
+    } finally {
+      setSaving(false);
     }
   };
 
   const getCropName = (cropId) => {
-    const crop = crops.find(
-      (item) => String(item.id) === String(cropId)
+    const cropList = Array.isArray(crops)
+      ? crops
+      : [];
+
+    const crop = cropList.find(
+      (item) =>
+        String(item.id) === String(cropId)
     );
 
-    return crop ? crop.name : "Unknown Crop";
+    return crop
+      ? crop.name
+      : "Unknown Crop";
   };
+
 
   const filteredTasks = tasks.filter((task) => {
     const cropName = getCropName(task.cropId);
 
     const matchesSearch =
-      task.title.toLowerCase().includes(search.toLowerCase()) ||
-      cropName.toLowerCase().includes(search.toLowerCase());
+      String(task.title || "")
+        .toLowerCase()
+        .includes(search.toLowerCase()) ||
+      cropName
+        .toLowerCase()
+        .includes(search.toLowerCase());
 
     const matchesFilter =
-      filter === "All" || getStatus(task) === filter;
+      filter === "All" ||
+      getStatus(task) === filter;
 
     return matchesSearch && matchesFilter;
   });
+
 
   const doneCount = tasks.filter(
     (task) => getStatus(task) === "Done"
@@ -162,8 +332,16 @@ function Tasks() {
   ).length;
 
   return (
-    <Box sx={{ bgcolor: "#f4f8f4", minHeight: "85vh", py: 4 }}>
+    <Box
+      sx={{
+        bgcolor: "#f4f8f4",
+        minHeight: "85vh",
+        py: 4
+      }}
+    >
       <Container maxWidth="xl">
+
+        {/* HEADER */}
 
         <Box sx={{ mb: 4 }}>
           <Typography
@@ -174,10 +352,52 @@ function Tasks() {
             Farm Task Scheduler
           </Typography>
 
-          <Typography color="text.secondary" sx={{ mt: 1 }}>
+          <Typography
+            color="text.secondary"
+            sx={{ mt: 1 }}
+          >
             Plan and track daily farming activities.
           </Typography>
         </Box>
+
+        {/* API ERRORS */}
+
+        {apiError && (
+          <Alert
+            severity="error"
+            sx={{ mb: 2 }}
+            action={
+              <Button
+                size="small"
+                color="inherit"
+                onClick={() => loadTasks()}
+              >
+                Retry
+              </Button>
+            }
+          >
+            {apiError}
+          </Alert>
+        )}
+
+        {/* LOADING */}
+
+        {loading && (
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+              mb: 2
+            }}
+          >
+            <CircularProgress size={18} />
+
+            <Typography variant="body2">
+              Loading tasks from database...
+            </Typography>
+          </Box>
+        )}
 
         {/* SUMMARY CARDS */}
 
@@ -193,10 +413,26 @@ function Tasks() {
           }}
         >
           {[
-            { label: "Total Tasks", value: tasks.length, color: "#1b5e20" },
-            { label: "Pending", value: pendingCount, color: "#ed6c02" },
-            { label: "Completed", value: doneCount, color: "#2e7d32" },
-            { label: "Overdue", value: overdueCount, color: "#d32f2f" }
+            {
+              label: "Total Tasks",
+              value: tasks.length,
+              color: "#1b5e20"
+            },
+            {
+              label: "Pending",
+              value: pendingCount,
+              color: "#ed6c02"
+            },
+            {
+              label: "Completed",
+              value: doneCount,
+              color: "#2e7d32"
+            },
+            {
+              label: "Overdue",
+              value: overdueCount,
+              color: "#d32f2f"
+            }
           ].map((item) => (
             <Paper
               key={item.label}
@@ -204,17 +440,24 @@ function Tasks() {
                 p: 3,
                 borderRadius: 3,
                 border: "1px solid #e3ebe4",
-                boxShadow: "0 4px 15px rgba(0,0,0,0.04)"
+                boxShadow:
+                  "0 4px 15px rgba(0,0,0,0.04)"
               }}
             >
-              <Typography color="text.secondary" variant="body2">
+              <Typography
+                color="text.secondary"
+                variant="body2"
+              >
                 {item.label}
               </Typography>
 
               <Typography
                 variant="h4"
                 fontWeight={700}
-                sx={{ color: item.color, mt: 1 }}
+                sx={{
+                  color: item.color,
+                  mt: 1
+                }}
               >
                 {item.value}
               </Typography>
@@ -230,18 +473,27 @@ function Tasks() {
             mb: 4,
             borderRadius: 3,
             border: "1px solid #e3ebe4",
-            boxShadow: "0 4px 18px rgba(0,0,0,0.04)"
+            boxShadow:
+              "0 4px 18px rgba(0,0,0,0.04)"
           }}
         >
           <Typography
             variant="h6"
             fontWeight={700}
-            sx={{ mb: 3, color: "#183b29" }}
+            sx={{
+              mb: 3,
+              color: "#183b29"
+            }}
           >
-            {editingId !== null ? "Edit Farm Task" : "Add New Task"}
+            {editingId !== null
+              ? "Edit Farm Task"
+              : "Add New Task"}
           </Typography>
 
-          <Box component="form" onSubmit={handleSubmit}>
+          <Box
+            component="form"
+            onSubmit={handleSubmit}
+          >
             <Box
               sx={{
                 display: "grid",
@@ -256,8 +508,11 @@ function Tasks() {
                 label="Task Title"
                 placeholder="e.g. Water wheat field"
                 value={form.title}
-                onChange={(e) =>
-                  setForm({ ...form, title: e.target.value })
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    title: event.target.value
+                  })
                 }
                 fullWidth
                 required
@@ -267,71 +522,107 @@ function Tasks() {
                 select
                 label="Task Type"
                 value={form.type}
-                onChange={(e) =>
-                  setForm({ ...form, type: e.target.value })
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    type: event.target.value
+                  })
                 }
                 fullWidth
               >
-                {["Irrigation", "Fertilizer", "Spraying", "Labour"].map(
-                  (type) => (
-                    <MenuItem key={type} value={type}>
-                      {type}
-                    </MenuItem>
-                  )
-                )}
+                {[
+                  "Irrigation",
+                  "Fertilizer",
+                  "Spraying",
+                  "Labour"
+                ].map((type) => (
+                  <MenuItem
+                    key={type}
+                    value={type}
+                  >
+                    {type}
+                  </MenuItem>
+                ))}
               </TextField>
 
               <TextField
                 select
                 label="Select Crop"
                 value={form.cropId}
-                onChange={(e) =>
-                  setForm({ ...form, cropId: e.target.value })
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    cropId: event.target.value
+                  })
                 }
                 fullWidth
                 required
               >
-                {crops.map((crop) => (
-                  <MenuItem
-                    key={crop.id}
-                    value={String(crop.id)}
-                  >
-                    {crop.name} — {crop.field}
-                  </MenuItem>
-                ))}
+                {(Array.isArray(crops) ? crops : []).map(
+                  (crop) => (
+                    <MenuItem
+                      key={crop.id}
+                      value={String(crop.id)}
+                    >
+                      {crop.name} — {crop.field}
+                    </MenuItem>
+                  )
+                )}
               </TextField>
 
               <TextField
                 label="Due Date"
                 type="date"
                 value={form.dueDate}
-                onChange={(e) =>
-                  setForm({ ...form, dueDate: e.target.value })
+                onChange={(event) =>
+                  setForm({
+                    ...form,
+                    dueDate: event.target.value
+                  })
                 }
                 slotProps={{
-                  inputLabel: { shrink: true }
+                  inputLabel: {
+                    shrink: true
+                  }
                 }}
                 fullWidth
                 required
               />
             </Box>
 
-            <Box sx={{ display: "flex", gap: 2, mt: 3 }}>
+            <Box
+              sx={{
+                display: "flex",
+                gap: 2,
+                mt: 3
+              }}
+            >
               <Button
                 type="submit"
+                disabled={saving || loading}
                 variant="contained"
                 sx={{
                   bgcolor: "#1b5e20",
                   textTransform: "none",
                   px: 3,
-                  "&:hover": { bgcolor: "#12451a" }
+                  "&:hover": {
+                    bgcolor: "#12451a"
+                  }
                 }}
               >
-                {editingId !== null ? "Update Task" : "Add Task"}
+                {saving
+                  ? "Saving..."
+                  : editingId !== null
+                    ? "Update Task"
+                    : "Add Task"}
               </Button>
 
               {editingId !== null && (
-                <Button onClick={resetForm} variant="outlined">
+                <Button
+                  onClick={resetForm}
+                  variant="outlined"
+                  disabled={saving}
+                >
                   Cancel
                 </Button>
               )}
@@ -339,12 +630,15 @@ function Tasks() {
           </Box>
         </Paper>
 
-        {/* SEARCH AND FILTER */}
+        {/* SEARCH / FILTER */}
 
         <Box
           sx={{
             display: "flex",
-            flexDirection: { xs: "column", md: "row" },
+            flexDirection: {
+              xs: "column",
+              md: "row"
+            },
             gap: 2,
             mb: 3
           }}
@@ -352,7 +646,9 @@ function Tasks() {
           <TextField
             placeholder="Search tasks or crops..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(event) =>
+              setSearch(event.target.value)
+            }
             sx={{ flex: 1 }}
           />
 
@@ -360,11 +656,23 @@ function Tasks() {
             select
             label="Filter by Status"
             value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            sx={{ minWidth: 200 }}
+            onChange={(event) =>
+              setFilter(event.target.value)
+            }
+            sx={{
+              minWidth: 200
+            }}
           >
-            {["All", "Pending", "Done", "Overdue"].map((status) => (
-              <MenuItem key={status} value={status}>
+            {[
+              "All",
+              "Pending",
+              "Done",
+              "Overdue"
+            ].map((status) => (
+              <MenuItem
+                key={status}
+                value={status}
+              >
                 {status}
               </MenuItem>
             ))}
@@ -394,7 +702,8 @@ function Tasks() {
                   p: 3,
                   borderRadius: 3,
                   border: "1px solid #e3ebe4",
-                  boxShadow: "0 4px 18px rgba(0,0,0,0.04)"
+                  boxShadow:
+                    "0 4px 18px rgba(0,0,0,0.04)"
                 }}
               >
                 <Box
@@ -409,7 +718,9 @@ function Tasks() {
                   <Typography
                     variant="h6"
                     fontWeight={700}
-                    sx={{ color: "#183b29" }}
+                    sx={{
+                      color: "#183b29"
+                    }}
                   >
                     {task.title}
                   </Typography>
@@ -421,8 +732,8 @@ function Tasks() {
                       status === "Done"
                         ? "success"
                         : status === "Overdue"
-                        ? "error"
-                        : "warning"
+                          ? "error"
+                          : "warning"
                     }
                   />
                 </Box>
@@ -432,21 +743,32 @@ function Tasks() {
                 </Typography>
 
                 <Typography sx={{ mb: 1 }}>
-                  <b>Crop:</b> {getCropName(task.cropId)}
+                  <b>Crop:</b>{" "}
+                  {getCropName(task.cropId)}
                 </Typography>
 
                 <Typography sx={{ mb: 3 }}>
-                  <b>Due Date:</b> {task.dueDate}
+                  <b>Due Date:</b>{" "}
+                  {String(task.dueDate || "").slice(0, 10)}
                 </Typography>
 
                 {isAdmin && (
-                  <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      gap: 1,
+                      flexWrap: "wrap"
+                    }}
+                  >
                     {task.status !== "Done" && (
                       <Button
                         size="small"
                         variant="contained"
                         color="success"
-                        onClick={() => dispatch(markTaskDone(task.id))}
+                        disabled={saving || loading}
+                        onClick={() =>
+                          handleMarkDone(task.id)
+                        }
                       >
                         Mark Done
                       </Button>
@@ -455,7 +777,10 @@ function Tasks() {
                     <Button
                       size="small"
                       variant="outlined"
-                      onClick={() => handleEdit(task)}
+                      disabled={saving || loading}
+                      onClick={() =>
+                        handleEdit(task)
+                      }
                     >
                       Edit
                     </Button>
@@ -464,7 +789,10 @@ function Tasks() {
                       size="small"
                       variant="outlined"
                       color="error"
-                      onClick={() => handleDelete(task.id)}
+                      disabled={saving || loading}
+                      onClick={() =>
+                        handleDelete(task.id)
+                      }
                     >
                       Delete
                     </Button>
@@ -475,19 +803,23 @@ function Tasks() {
           })}
         </Box>
 
-        {filteredTasks.length === 0 && (
-          <Paper
-            sx={{
-              p: 4,
-              textAlign: "center",
-              borderRadius: 3
-            }}
-          >
-            <Typography color="text.secondary">
-              No tasks found.
-            </Typography>
-          </Paper>
-        )}
+        {/* EMPTY STATE */}
+
+        {!loading &&
+          !apiError &&
+          filteredTasks.length === 0 && (
+            <Paper
+              sx={{
+                p: 4,
+                textAlign: "center",
+                borderRadius: 3
+              }}
+            >
+              <Typography color="text.secondary">
+                No tasks found.
+              </Typography>
+            </Paper>
+          )}
 
       </Container>
     </Box>

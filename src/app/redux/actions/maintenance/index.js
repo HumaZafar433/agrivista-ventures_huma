@@ -47,7 +47,6 @@ const syncMaintenanceExpense = (
 
   const amount = Number(service.cost || 0);
 
-  // Remove expense if service is deleted or costs zero
   if (isDeleted || amount <= 0) {
     if (existingExpense) {
       dispatch(deleteExpense(existingExpense.id));
@@ -75,7 +74,6 @@ const syncMaintenanceExpense = (
     sourceId: String(service.id)
   };
 
-  // Avoid duplicate expenses
   if (existingExpense) {
 
     const unchanged =
@@ -96,7 +94,6 @@ const syncMaintenanceExpense = (
 };
 
 
-// Common Redux action handler
 const perform = (
   requestType,
   successType,
@@ -143,8 +140,6 @@ const perform = (
         );
       });
     }
-
-    // Add or update the linked expense
     if (operation === "save") {
       syncMaintenanceExpense(
         dispatch,
@@ -153,7 +148,6 @@ const perform = (
       );
     }
 
-    // Delete expense when service is removed
     if (operation === "delete") {
       syncMaintenanceExpense(
         dispatch,
@@ -163,7 +157,6 @@ const perform = (
       );
     }
 
-    // Update equipment service dates
     if (operation !== "load") {
       await dispatch(GETEQUIPMENT());
     }
@@ -188,8 +181,6 @@ const perform = (
   }
 };
 
-
-// Get all maintenance records
 export const GETMAINTENANCE = () =>
   perform(
     T.GET_MAINTENANCE_REQUEST,
@@ -199,8 +190,6 @@ export const GETMAINTENANCE = () =>
     "load"
   );
 
-
-// Add maintenance
 export const ADDSERVICE = (
   data,
   onSuccess,
@@ -216,8 +205,6 @@ export const ADDSERVICE = (
     onFailure
   );
 
-
-// Update maintenance
 export const UPDATESERVICE = (
   data,
   onSuccess,
@@ -234,7 +221,6 @@ export const UPDATESERVICE = (
   );
 
 
-// Delete maintenance
 export const REMOVESERVICE = (
   id,
   onSuccess,

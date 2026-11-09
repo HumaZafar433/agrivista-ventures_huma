@@ -1,37 +1,33 @@
+
 import { createSlice } from "@reduxjs/toolkit";
-
-const loadExpenses = () => {
-  try {
-    const saved = localStorage.getItem("agri_expenses");
-
-    if (saved) {
-      const parsed = JSON.parse(saved);
-
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-    }
-  } catch (error) {
-    console.error("Error loading expenses:", error);
-  }
-
-  return [];
-};
 
 const expensesSlice = createSlice({
   name: "expenses",
 
-  initialState: loadExpenses(),
+  initialState: [],
 
   reducers: {
+    setExpensesFromDatabase: (state, action) => {
+      return Array.isArray(action.payload)
+        ? action.payload
+        : [];
+    },
 
     addExpense: (state, action) => {
-      state.push(action.payload);
+      const exists = state.some(
+        (expense) =>
+          String(expense.id) === String(action.payload.id)
+      );
+
+      if (!exists) {
+        state.push(action.payload);
+      }
     },
 
     updateExpense: (state, action) => {
       const index = state.findIndex(
-        (expense) => expense.id === action.payload.id
+        (expense) =>
+          String(expense.id) === String(action.payload.id)
       );
 
       if (index !== -1) {
@@ -44,13 +40,15 @@ const expensesSlice = createSlice({
 
     deleteExpense: (state, action) => {
       return state.filter(
-        (expense) => expense.id !== action.payload
+        (expense) =>
+          String(expense.id) !== String(action.payload)
       );
     }
   }
 });
 
 export const {
+  setExpensesFromDatabase,
   addExpense,
   updateExpense,
   deleteExpense

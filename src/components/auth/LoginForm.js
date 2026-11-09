@@ -22,35 +22,59 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  const handleLogin = (e) => {
-    e.preventDefault();
-    setError("");
+  
 
-    let role = "";
+const handleLogin = async (e) => {
+  e.preventDefault();
+  setError("");
 
-    if (username === "admin" && password === "admin123") {
-      role = "Admin";
-    } else if (
-      username === "manager" &&
-      password === "manager123"
-    ) {
-      role = "Manager";
-    } else {
-      setError("Invalid username or password.");
+  try {
+    const response = await fetch(
+      "http://localhost:5000/api/users/login",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          username: username.trim(),
+          password: password
+        })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok || !result.succeeded) {
+      setError(
+  `HTTP ${response.status}: ${result.message || "Login failed"}`
+);
       return;
     }
+
+    const user = result.user;
+
+    const role =
+      user.role?.toLowerCase() === "admin"
+        ? "Admin"
+        : "Manager";
 
     dispatch(
       loginSuccess({
         user: {
-          name: username === "admin" ? "Farm Admin" : "Farm Manager",
-          username
+          id: user.id,
+          name: user.fullName || user.username,
+          username: user.username
         },
-        role
+        role,
+        token: user.token
       })
     );
-  };
-
+  } catch (error) {
+  console.error("Login error:", error);
+  setError(error.message || "Login failed");
+}
+};
   return (
     <Box
       sx={{
@@ -213,11 +237,11 @@ function LoginForm() {
               </Typography>
 
               <Typography variant="body2">
-                Admin: admin / admin123
+                Admin: admin / Admin@123
               </Typography>
 
               <Typography variant="body2">
-                Manager: manager / manager123
+                Manager: manager / Manager@123
               </Typography>
             </Box>
 

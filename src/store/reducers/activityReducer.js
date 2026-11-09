@@ -1,23 +1,38 @@
-import { createSlice } from "@reduxjs/toolkit";
 
-function loadActivity() {
-  try {
-    const value = JSON.parse(localStorage.getItem("agri_activity") || "[]");
-    return Array.isArray(value) ? value.slice(0, 250) : [];
-  } catch (error) {
-    return [];
-  }
-}
+import { createSlice } from "@reduxjs/toolkit";
 
 const activitySlice = createSlice({
   name: "activity",
-  initialState: loadActivity(),
+
+  initialState: [],
+
   reducers: {
-    logActivity(state, action) {
-      state.unshift(action.payload);
-      if (state.length > 250) state.length = 250;
+    setActivityFromDatabase: (state, action) => {
+      return Array.isArray(action.payload)
+        ? action.payload
+        : [];
+    },
+
+    logActivity: (state, action) => {
+      const exists = state.some(
+        (entry) =>
+          String(entry.id) === String(action.payload.id)
+      );
+
+      if (!exists) {
+        state.unshift(action.payload);
+      }
+
+      if (state.length > 250) {
+        state.length = 250;
+      }
     }
   }
 });
-export const { logActivity } = activitySlice.actions;
+
+export const {
+  setActivityFromDatabase,
+  logActivity
+} = activitySlice.actions;
+
 export default activitySlice.reducer;

@@ -1,3 +1,4 @@
+
 import { createSlice } from "@reduxjs/toolkit";
 
 const loadSession = () => {
@@ -9,11 +10,13 @@ const loadSession = () => {
 
       if (
         session.user &&
+        session.token &&
         ["Admin", "Manager"].includes(session.role)
       ) {
         return {
           user: session.user,
           role: session.role,
+          token: session.token,
           isAuthenticated: true
         };
       }
@@ -25,6 +28,7 @@ const loadSession = () => {
   return {
     user: null,
     role: null,
+    token: null,
     isAuthenticated: false
   };
 };
@@ -38,13 +42,26 @@ const authSlice = createSlice({
     loginSuccess: (state, action) => {
       state.user = action.payload.user;
       state.role = action.payload.role;
+      state.token = action.payload.token;
       state.isAuthenticated = true;
+
+      localStorage.setItem(
+        "agri_session",
+        JSON.stringify({
+          user: state.user,
+          role: state.role,
+          token: state.token
+        })
+      );
     },
 
     logout: (state) => {
       state.user = null;
       state.role = null;
+      state.token = null;
       state.isAuthenticated = false;
+
+      localStorage.removeItem("agri_session");
     }
   }
 });

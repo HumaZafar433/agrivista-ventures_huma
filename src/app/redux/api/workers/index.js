@@ -1,170 +1,97 @@
-import {
-  KEYS,
-  ok,
-  bad,
-  uid,
-  storageApi
-} from "../index";
 
+const API = "http://localhost:5000/api/workers";
+
+// Get login token
+function getToken() {
+  try {
+    const session = JSON.parse(
+      localStorage.getItem("agri_session") || "{}"
+    );
+
+    return session.token || "";
+  } catch {
+    return "";
+  }
+}
+
+// PostgreSQL API request
+async function workerRequest(
+  path = "",
+  method = "GET",
+  data = undefined
+) {
+  const token = getToken();
+
+  if (!token) {
+    throw new Error(
+      "Login session missing. Please login again."
+    );
+  }
+
+  let response;
+
+  try {
+    response = await fetch(`${API}${path}`, {
+      method,
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      ...(data !== undefined
+        ? { body: JSON.stringify(data) }
+        : {})
+    });
+  } catch {
+    throw new Error(
+      "Cannot connect to backend on port 5000."
+    );
+  }
+
+  const result = await response.json().catch(() => null);
+
+  if (
+    !response.ok ||
+    !result ||
+    result.succeeded === false
+  ) {
+    throw new Error(
+      result?.message ||
+      `Worker request failed (${response.status})`
+    );
+  }
+
+  // Redux actions expect response.data
+  return {
+    data: result
+  };
+}
+
+// Get workers from PostgreSQL
 export async function getWorkers() {
-  return storageApi.getList(KEYS.workers);
+  return workerRequest();
 }
 
+// Add worker to PostgreSQL
 export async function createWorker(workerData) {
-  const response = await getWorkers();
-
-  if (!response.data.succeeded) {
-    return response;
-  }
-
-  const workers = response.data.data;
-
-  const name = workerData.fullName?.trim() || "";
-  const cnic = workerData.cnic?.replace(/\D/g, "") || "";
-  const phone = workerData.phone?.trim() || "";
-  const wage = Number(workerData.dailyWage);
-
-  if (
-    name.length < 3 ||
-    !/^[A-Za-z ]+$/.test(name)
-  ) {
-    return bad("Enter a valid worker name.");
-  }
-
-  if (!/^\d{13}$/.test(cnic)) {
-    return bad("CNIC must contain 13 digits.");
-  }
-
-  if (!/^\d{11}$/.test(phone)) {
-    return bad("Phone number must contain 11 digits.");
-  }
-
-  if (!Number.isFinite(wage) || wage <= 0) {
-    return bad("Daily wage must be greater than zero.");
-  }
-
-  const alreadyExists = workers.some(
-    (worker) =>
-      String(worker.cnic).replace(/\D/g, "") === cnic
-  );
-
-  if (alreadyExists) {
-    return bad("Worker with this CNIC already exists.");
-  }
-
-  const newWorker = {
-    ...workerData,
-    id: uid(),
-    fullName: name,
-    dailyWage: wage,
-    status: workerData.status || "Active"
-  };
-
-  const saved = await storageApi.saveList(
-    KEYS.workers,
-    [...workers, newWorker]
-  );
-
-  return saved.data.succeeded
-    ? ok(newWorker, "Worker added successfully.")
-    : saved;
+  return workerRequest("", "POST", workerData);
 }
 
+// Update worker in PostgreSQL
 export async function updateWorker(updatedWorker) {
-  const response = await getWorkers();
+  const { id, ...workerData } = updatedWorker;
 
-  if (!response.data.succeeded) {
-    return response;
-  }
-
-  const workers = response.data.data;
-
-  const existing = workers.find(
-    (worker) => worker.id === updatedWorker.id
+  return workerRequest(
+    `/${encodeURIComponent(id)}`,
+    "PUT",
+    workerData
   );
-
-  if (!existing) {
-    return bad("Worker not found.");
-  }
-
-  const mergedWorker = {
-    ...existing,
-    ...updatedWorker
-  };
-
-  const name = String(mergedWorker.fullName || "").trim();
-  const cnic = String(mergedWorker.cnic || "").replace(/\D/g, "");
-  const phone = String(mergedWorker.phone || "").trim();
-  const wage = Number(mergedWorker.dailyWage);
-
-  if (name.length < 3 || !/^[A-Za-z ]+$/.test(name)) {
-    return bad("Enter a valid worker name.");
-  }
-
-  if (!/^\d{13}$/.test(cnic)) {
-    return bad("CNIC must contain 13 digits.");
-  }
-
-  if (!/^\d{11}$/.test(phone)) {
-    return bad("Phone number must contain 11 digits.");
-  }
-
-  if (!Number.isFinite(wage) || wage <= 0) {
-    return bad("Daily wage must be greater than zero.");
-  }
-
-  if (
-    workers.some(
-      (worker) =>
-        worker.id !== updatedWorker.id &&
-        String(worker.cnic).replace(/\D/g, "") === cnic
-    )
-  ) {
-    return bad("Worker with this CNIC already exists.");
-  }
-
-  const updatedList = workers.map((worker) =>
-    worker.id === updatedWorker.id
-      ? { ...mergedWorker, fullName: name, dailyWage: wage }
-      : worker
-  );
-
-  const saved = await storageApi.saveList(
-    KEYS.workers,
-    updatedList
-  );
-
-  return saved.data.succeeded
-    ? ok(
-        { ...mergedWorker, fullName: name, dailyWage: wage },
-        "Worker updated successfully."
-      )
-    : saved;
 }
 
+// Delete worker from PostgreSQL
 export async function removeWorker(id) {
-  const response = await getWorkers();
-
-  if (!response.data.succeeded) {
-    return response;
-  }
-
-  const workers = response.data.data;
-
-  if (!workers.some((worker) => worker.id === id)) {
-    return bad("Worker not found.");
-  }
-
-  const updatedList = workers.filter(
-    (worker) => worker.id !== id
+  return workerRequest(
+    `/${encodeURIComponent(id)}`,
+    "DELETE"
   );
-
-  const saved = await storageApi.saveList(
-    KEYS.workers,
-    updatedList
-  );
-
-  return saved.data.succeeded
-    ? ok({ id }, "Worker deleted successfully.")
-    : saved;
 }

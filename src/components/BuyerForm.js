@@ -1,5 +1,6 @@
+
 import { useState } from "react";
-import { useDispatch, useSelector } from "react-redux";
+import { useSelector } from "react-redux";
 
 import {
   Box,
@@ -20,8 +21,6 @@ import {
   faUpload
 } from "@fortawesome/free-solid-svg-icons";
 
-import { addOrder } from "../store/reducers/ordersReducer";
-
 const todayIso = () => {
   const date = new Date();
 
@@ -33,8 +32,7 @@ const todayIso = () => {
 };
 
 function BuyerForm({ buyers = [], onSaveBuyer }) {
-  const dispatch = useDispatch();
-
+  
   const crops = useSelector((state) => state.crops || []);
   const orders = useSelector((state) => state.orders || []);
 
@@ -50,16 +48,20 @@ function BuyerForm({ buyers = [], onSaveBuyer }) {
 
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const selectedCrop = crops.find(
     (crop) => String(crop.id) === String(cropId)
   );
 
+  // Cancelled orders do not reserve stock.
+  // Pending and Delivered orders still count.
   const bookedQuantity = selectedCrop
     ? orders
         .filter(
           (order) =>
-            String(order.cropId) === String(selectedCrop.id)
+            String(order.cropId) === String(selectedCrop.id) &&
+            order.status !== "Cancelled"
         )
         .reduce(
           (total, order) =>
@@ -120,8 +122,10 @@ function BuyerForm({ buyers = [], onSaveBuyer }) {
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
+
+    if (saving) return;
 
     setError("");
     setSuccess("");
@@ -186,52 +190,47 @@ function BuyerForm({ buyers = [], onSaveBuyer }) {
       return;
     }
 
-    const buyerId = Date.now().toString();
+    setSaving(true);
 
-    const newBuyer = {
-      id: buyerId,
-      name: cleanName,
-      phone,
-      businessName: businessName.trim(),
-      cnic,
-      imageBase64: photo,
-      cropId: selectedCrop.id,
-      crop: selectedCrop.name,
-      field: selectedCrop.field,
-      quantity: saleQty,
-      date: saleDate
-    };
-
-    onSaveBuyer(newBuyer);
-
-    dispatch(
-      addOrder({
-        id: `buyer-order-${buyerId}`,
-        buyerId,
+    try {
+      
+      const newBuyer = {
         name: cleanName,
+        phone,
+        businessName: businessName.trim(),
+        cnic,
+        imageBase64: photo,
         cropId: selectedCrop.id,
         crop: selectedCrop.name,
         field: selectedCrop.field,
         quantity: saleQty,
-        orderDate: saleDate,
-        status: "Pending",
-        pricePerKg: null,
-        totalAmount: null
-      })
-    );
+        date: saleDate
+      };
 
-    setName("");
-    setPhone("");
-    setBusinessName("");
-    setCnic("");
-    setPhoto("");
-    setCropId("");
-    setQuantity("");
-    setSaleDate(todayIso());
+      const savedBuyer = await onSaveBuyer(newBuyer);
 
-    event.currentTarget.reset();
+      if (!savedBuyer?.id) {
+        throw new Error("Buyer saved without a valid ID.");
+      }
 
-    setSuccess("Buyer registered and order created successfully.");
+
+      setName("");
+      setPhone("");
+      setBusinessName("");
+      setCnic("");
+      setPhoto("");
+      setCropId("");
+      setQuantity("");
+      setSaleDate(todayIso());
+
+     setSuccess("Buyer registered successfully!");
+    } catch (buyerError) {
+      setError(
+        buyerError.message || "Buyer save failed."
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -328,6 +327,7 @@ function BuyerForm({ buyers = [], onSaveBuyer }) {
               onChange={(e) => {
                 setCropId(e.target.value);
                 setQuantity("");
+                setSuccess("");
               }}
               required
               fullWidth
@@ -373,6 +373,10 @@ function BuyerForm({ buyers = [], onSaveBuyer }) {
 
           {selectedCrop && (
             <Alert severity="info" sx={{ mb: 3 }}>
+              Total Harvest: {Number(selectedCrop.harvestQty || 0)} kg
+              {" | "}
+              Booked Quantity: {bookedQuantity} kg
+              {" | "}
               Available Stock: {availableStock} kg
             </Alert>
           )}
@@ -426,6 +430,7 @@ function BuyerForm({ buyers = [], onSaveBuyer }) {
             type="submit"
             variant="contained"
             size="large"
+            disabled={saving}
             sx={{
               bgcolor: "#1b5e20",
               textTransform: "none",
@@ -434,7 +439,7 @@ function BuyerForm({ buyers = [], onSaveBuyer }) {
               }
             }}
           >
-            Register Buyer
+            {saving ? "Registering..." : "Register Buyer"}
           </Button>
         </Box>
       </CardContent>

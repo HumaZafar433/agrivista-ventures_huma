@@ -9,9 +9,10 @@ const persistMiddleware = (store) => (next) => (action) => {
       localStorage.setItem(
         "agri_session",
         JSON.stringify({
-          user: state.auth.user,
-          role: state.auth.role
-        })
+  user: state.auth.user,
+  role: state.auth.role,
+  token: state.auth.token
+})
       );
     } else {
       localStorage.removeItem("agri_session");

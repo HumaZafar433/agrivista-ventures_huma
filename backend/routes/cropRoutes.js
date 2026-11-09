@@ -1,0 +1,17 @@
+
+const router = require("express").Router();
+const c = require("../controllers/cropController");
+const { protect, authorize } = require("../middleware/authMiddleware");
+
+router.use(protect);
+
+// Admin aur Manager
+router.get("/", c.getAll);
+router.get("/:id", c.getOne);
+router.post("/", c.create);
+
+// Sirf Admin
+router.put("/:id", authorize("admin"), c.update);
+router.delete("/:id", authorize("admin"), c.remove);
+
+module.exports = router;

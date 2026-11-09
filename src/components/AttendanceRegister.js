@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+
+import { useCallback, useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 
 import {
@@ -24,7 +25,84 @@ import {
   selectDailyAttendance,
   selectMonthlyWages
 } from "../app/redux/selectors/attendance";
-import { addExpense } from "../store/reducers/expensesReducer";
+
+import {
+  addExpense,
+  setExpensesFromDatabase
+} from "../store/reducers/expensesReducer";
+
+const EXPENSES_API = "http://localhost:5000/api/expenses";
+
+async function expenseRequest(method = "GET", payload) {
+  let token = "";
+
+  try {
+    token = JSON.parse(
+      localStorage.getItem("agri_session") || "{}"
+    ).token || "";
+  } catch {
+    token = "";
+  }
+
+  if (!token) {
+    throw new Error(
+      "Login session missing. Please log in again."
+    );
+  }
+
+  let response;
+
+  try {
+    response = await fetch(EXPENSES_API, {
+      method,
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      ...(payload !== undefined
+        ? { body: JSON.stringify(payload) }
+        : {})
+    });
+  } catch {
+    throw new Error(
+      "Cannot connect to Expenses backend on port 5000."
+    );
+  }
+
+  const result = await response.json().catch(() => null);
+
+  if (
+    !response.ok ||
+    !result ||
+    !result.succeeded
+  ) {
+    throw new Error(
+      result?.message ||
+      `Expenses request failed (${response.status})`
+    );
+  }
+
+  return result.data;
+}
+
+
+function isPayrollExpense(expense, worker, month) {
+  const marker = `PAYROLL:${worker.id}:${month}`;
+  const note = String(expense.note || "");
+
+  return (
+    note.includes(`[${marker}]`) ||
+    note ===
+      `Monthly wages - ${worker.fullName} - ${month}` ||
+    (
+      expense.sourceType === "payroll" &&
+      String(expense.sourceId) ===
+        `${worker.id}-${month}`
+    )
+  );
+}
+
 
 const getToday = () => {
   const date = new Date();
@@ -43,11 +121,13 @@ const statuses = [
   "Leave"
 ];
 
+
 function AttendanceRegister() {
   const dispatch = useDispatch();
+
   const expenses = useSelector(
-  (state) => state.expenses || []
-);
+    (state) => state.expenses || []
+  );
 
   const workers = useSelector(
     (state) => state.workers?.workers || []
@@ -64,7 +144,9 @@ function AttendanceRegister() {
   const isAdmin = role === "Admin";
 
   const [date, setDate] = useState(getToday());
-  const [month, setMonth] = useState(getToday().slice(0, 7));
+  const [month, setMonth] = useState(
+    getToday().slice(0, 7)
+  );
 
   const [workerId, setWorkerId] = useState("");
   const [status, setStatus] = useState("Present");
@@ -74,6 +156,9 @@ function AttendanceRegister() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  const [payingWages, setPayingWages] = useState(false);
+  const [expensesReady, setExpensesReady] = useState(false);
+
   const daily = useSelector((state) =>
     selectDailyAttendance(state, date)
   );
@@ -82,9 +167,45 @@ function AttendanceRegister() {
     selectMonthlyWages(state, month)
   );
 
+
   useEffect(() => {
     dispatch(GETATTENDANCE());
   }, [dispatch]);
+
+
+
+  const refreshExpenses = useCallback(async () => {
+    const data = await expenseRequest("GET");
+
+    if (!Array.isArray(data)) {
+      throw new Error(
+        "Expenses API returned invalid data."
+      );
+    }
+
+    dispatch(
+      setExpensesFromDatabase(
+        data.map((expense) => ({
+          ...expense,
+          amount: Number(expense.amount || 0)
+        }))
+      )
+    );
+
+    setExpensesReady(true);
+
+    return data;
+  }, [dispatch]);
+
+  useEffect(() => {
+    refreshExpenses().catch((err) => {
+      setExpensesReady(false);
+      setError(
+        `Could not load wage payments: ${err.message}`
+      );
+    });
+  }, [refreshExpenses]);
+
 
   const resetForm = () => {
     setWorkerId("");
@@ -93,6 +214,7 @@ function AttendanceRegister() {
     setEditingId(null);
   };
 
+
   const handleSubmit = (event) => {
     event.preventDefault();
 
@@ -100,7 +222,9 @@ function AttendanceRegister() {
     setMessage("");
 
     if (!workerId || !date) {
-      setError("Please select a worker and date.");
+      setError(
+        "Please select a worker and date."
+      );
       return;
     }
 
@@ -113,7 +237,9 @@ function AttendanceRegister() {
 
     const success = () => {
       resetForm();
-      setMessage("Attendance saved successfully.");
+      setMessage(
+        "Attendance saved successfully."
+      );
     };
 
     const failure = (message) => {
@@ -141,6 +267,7 @@ function AttendanceRegister() {
     }
   };
 
+
   const handleEdit = (record) => {
     if (!isAdmin) return;
 
@@ -154,10 +281,16 @@ function AttendanceRegister() {
     setMessage("");
   };
 
+
+
   const handleDelete = (record) => {
     if (!isAdmin) return;
 
-    if (!window.confirm("Delete this attendance record?")) {
+    if (
+      !window.confirm(
+        "Delete this attendance record?"
+      )
+    ) {
       return;
     }
 
@@ -165,13 +298,16 @@ function AttendanceRegister() {
       REMOVEATTENDANCE(
         record.id,
         () => {
-          setMessage("Attendance deleted.");
+          setMessage(
+            "Attendance deleted."
+          );
           setError("");
         },
         (message) => setError(message)
       )
     );
   };
+
 
   const handleMarkAllPresent = async () => {
     setError("");
@@ -182,13 +318,16 @@ function AttendanceRegister() {
         worker.status === "Active" &&
         !records.some(
           (record) =>
-            String(record.workerId) === String(worker.id) &&
+            String(record.workerId) ===
+              String(worker.id) &&
             record.date === date
         )
     );
 
     if (unmarkedWorkers.length === 0) {
-      setMessage("All active workers already have attendance.");
+      setMessage(
+        "All active workers already have attendance."
+      );
       return;
     }
 
@@ -212,13 +351,17 @@ function AttendanceRegister() {
     if (failures.length > 0) {
       setError(failures[0]);
     } else {
-      setMessage("Attendance marked for all active workers.");
+      setMessage(
+        "Attendance marked for all active workers."
+      );
     }
   };
 
+
   const getWorkerName = (id) => {
     const worker = workers.find(
-      (item) => String(item.id) === String(id)
+      (item) =>
+        String(item.id) === String(id)
     );
 
     return worker?.fullName || "Unknown Worker";
@@ -229,55 +372,125 @@ function AttendanceRegister() {
   );
 
   const totalWages = wages.reduce(
-    (total, worker) => total + worker.payable,
+    (total, worker) =>
+      total + Number(worker.payable || 0),
     0
   );
-  const handlePayWages = (worker) => {
-  if (!isAdmin) return;
 
-  const expenseId = `wage-${worker.id}-${month}`;
 
-  const alreadyPaid = expenses.some(
-    (expense) => String(expense.id) === expenseId
-  );
+  const isWagePaid = (worker) =>
+    expenses.some((expense) =>
+      isPayrollExpense(expense, worker, month)
+    );
 
-  if (alreadyPaid) {
-    setError("This worker's wages are already paid.");
-    return;
-  }
 
-  if (worker.payable <= 0) {
-    setError("No wages are payable for this worker.");
-    return;
-  }
+  const handlePayWages = async (worker) => {
+    if (
+      !isAdmin ||
+      payingWages ||
+      !expensesReady
+    ) {
+      return;
+    }
 
-  const confirmed = window.confirm(
-    `Pay Rs. ${worker.payable} to ${worker.fullName}?`
-  );
+    setError("");
+    setMessage("");
 
-  if (!confirmed) return;
+    const amount = Number(worker.payable);
 
-  const today = getToday();
+    if (
+      !Number.isFinite(amount) ||
+      amount <= 0
+    ) {
+      setError(
+        "No wages are payable for this worker."
+      );
+      return;
+    }
 
-  dispatch(
-    addExpense({
-      id: expenseId,
-      cropId: "",
-      category: "Labour",
-      amount: worker.payable,
-      date: today,
-      note: `Monthly wages - ${worker.fullName} - ${month}`,
-      sourceType: "payroll",
-      sourceId: `${worker.id}-${month}`
-    })
-  );
+    setPayingWages(true);
 
-  setError("");
-  setMessage("Wages paid and expense recorded!");
-};
+    try {
+      
+      const currentExpenses =
+        await refreshExpenses();
+
+      const alreadyPaid = currentExpenses.some(
+        (expense) =>
+          isPayrollExpense(
+            expense,
+            worker,
+            month
+          )
+      );
+
+      if (alreadyPaid) {
+        setError(
+          "This worker's wages are already recorded in PostgreSQL."
+        );
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Pay Rs. ${amount.toLocaleString("en-PK")} to ${worker.fullName}?`
+      );
+
+      if (!confirmed) return;
+
+      const marker =
+        `PAYROLL:${worker.id}:${month}`;
+
+      const payload = {
+        category: "Labour",
+        amount,
+        date: getToday(),
+        cropId: null,
+        note:
+          `Monthly wages - ${worker.fullName} - ${month} [${marker}]`
+      };
+
+      const saved = await expenseRequest(
+        "POST",
+        payload
+      );
+
+      if (!saved || !saved.id) {
+        throw new Error(
+          "Payment response was incomplete. Check Expenses before trying again."
+        );
+      }
+      dispatch(
+        addExpense({
+          ...saved,
+          amount: Number(saved.amount || 0)
+        })
+      );
+
+      setMessage(
+        "Wages recorded in PostgreSQL successfully."
+      );
+
+      // Reload to verify the saved payment.
+      try {
+        await refreshExpenses();
+      } catch {
+        setError(
+          "Payment was saved, but the list could not refresh. Refresh the page before attempting another payment."
+        );
+      }
+    } catch (err) {
+      setError(
+        `${err.message} Check Expenses before trying to pay again.`
+      );
+    } finally {
+      setPayingWages(false);
+    }
+  };
+
   const money = (amount) =>
-    `Rs. ${Number(amount).toLocaleString("en-PK")}`;
+    `Rs. ${Number(amount || 0).toLocaleString("en-PK")}`;
 
+  
   return (
     <Box sx={{ mt: 4 }}>
 
@@ -286,7 +499,10 @@ function AttendanceRegister() {
       <Typography
         variant="h5"
         fontWeight={700}
-        sx={{ color: "#183b29", mb: 1 }}
+        sx={{
+          color: "#183b29",
+          mb: 1
+        }}
       >
         Daily Attendance & Payroll
       </Typography>
@@ -312,10 +528,22 @@ function AttendanceRegister() {
         }}
       >
         {[
-          { label: "Present", value: daily.present },
-          { label: "Absent", value: daily.absent },
-          { label: "Half-day", value: daily.halfDay },
-          { label: "Leave", value: daily.leave }
+          {
+            label: "Present",
+            value: daily.present
+          },
+          {
+            label: "Absent",
+            value: daily.absent
+          },
+          {
+            label: "Half-day",
+            value: daily.halfDay
+          },
+          {
+            label: "Leave",
+            value: daily.leave
+          }
         ].map((item) => (
           <Paper
             key={item.label}
@@ -332,7 +560,9 @@ function AttendanceRegister() {
             <Typography
               variant="h4"
               fontWeight={700}
-              sx={{ color: "#1b5e20" }}
+              sx={{
+                color: "#1b5e20"
+              }}
             >
               {item.value}
             </Typography>
@@ -361,18 +591,27 @@ function AttendanceRegister() {
         </Typography>
 
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert
+            severity="error"
+            sx={{ mb: 2 }}
+          >
             {error}
           </Alert>
         )}
 
         {message && (
-          <Alert severity="success" sx={{ mb: 2 }}>
+          <Alert
+            severity="success"
+            sx={{ mb: 2 }}
+          >
             {message}
           </Alert>
         )}
 
-        <Box component="form" onSubmit={handleSubmit}>
+        <Box
+          component="form"
+          onSubmit={handleSubmit}
+        >
           <Box
             sx={{
               display: "grid",
@@ -387,9 +626,13 @@ function AttendanceRegister() {
               type="date"
               label="Attendance Date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) =>
+                setDate(e.target.value)
+              }
               slotProps={{
-                inputLabel: { shrink: true }
+                inputLabel: {
+                  shrink: true
+                }
               }}
               fullWidth
               required
@@ -399,7 +642,9 @@ function AttendanceRegister() {
               select
               label="Select Worker"
               value={workerId}
-              onChange={(e) => setWorkerId(e.target.value)}
+              onChange={(e) =>
+                setWorkerId(e.target.value)
+              }
               fullWidth
               required
             >
@@ -417,11 +662,16 @@ function AttendanceRegister() {
               select
               label="Attendance Status"
               value={status}
-              onChange={(e) => setStatus(e.target.value)}
+              onChange={(e) =>
+                setStatus(e.target.value)
+              }
               fullWidth
             >
               {statuses.map((item) => (
-                <MenuItem key={item} value={item}>
+                <MenuItem
+                  key={item}
+                  value={item}
+                >
                   {item}
                 </MenuItem>
               ))}
@@ -430,7 +680,9 @@ function AttendanceRegister() {
             <TextField
               label="Notes (Optional)"
               value={note}
-              onChange={(e) => setNote(e.target.value)}
+              onChange={(e) =>
+                setNote(e.target.value)
+              }
               fullWidth
             />
           </Box>
@@ -449,7 +701,9 @@ function AttendanceRegister() {
               sx={{
                 bgcolor: "#1b5e20",
                 textTransform: "none",
-                "&:hover": { bgcolor: "#12451a" }
+                "&:hover": {
+                  bgcolor: "#12451a"
+                }
               }}
             >
               {editingId !== null
@@ -461,7 +715,9 @@ function AttendanceRegister() {
               <Button
                 variant="outlined"
                 onClick={handleMarkAllPresent}
-                sx={{ textTransform: "none" }}
+                sx={{
+                  textTransform: "none"
+                }}
               >
                 Mark All Present
               </Button>
@@ -516,7 +772,9 @@ function AttendanceRegister() {
               >
                 <Box>
                   <Typography fontWeight={600}>
-                    {getWorkerName(record.workerId)}
+                    {getWorkerName(
+                      record.workerId
+                    )}
                   </Typography>
 
                   {record.note && (
@@ -543,8 +801,8 @@ function AttendanceRegister() {
                       record.status === "Present"
                         ? "success"
                         : record.status === "Absent"
-                        ? "error"
-                        : "warning"
+                          ? "error"
+                          : "warning"
                     }
                     size="small"
                   />
@@ -553,7 +811,9 @@ function AttendanceRegister() {
                     <>
                       <Button
                         size="small"
-                        onClick={() => handleEdit(record)}
+                        onClick={() =>
+                          handleEdit(record)
+                        }
                       >
                         Edit
                       </Button>
@@ -561,7 +821,9 @@ function AttendanceRegister() {
                       <Button
                         size="small"
                         color="error"
-                        onClick={() => handleDelete(record)}
+                        onClick={() =>
+                          handleDelete(record)
+                        }
                       >
                         Delete
                       </Button>
@@ -597,11 +859,18 @@ function AttendanceRegister() {
           type="month"
           label="Select Month"
           value={month}
-          onChange={(e) => setMonth(e.target.value)}
+          onChange={(e) =>
+            setMonth(e.target.value)
+          }
           slotProps={{
-            inputLabel: { shrink: true }
+            inputLabel: {
+              shrink: true
+            }
           }}
-          sx={{ mb: 3, minWidth: 230 }}
+          sx={{
+            mb: 3,
+            minWidth: 230
+          }}
         />
 
         <Box
@@ -619,14 +888,21 @@ function AttendanceRegister() {
           <Typography
             variant="h4"
             fontWeight={700}
-            sx={{ color: "#1b5e20" }}
+            sx={{
+              color: "#1b5e20"
+            }}
           >
             {money(totalWages)}
           </Typography>
         </Box>
 
+        {/* WORKER PAYROLL CARDS */}
+
         {wages.map((worker) => (
-          <Box key={worker.id} sx={{ mb: 2 }}>
+          <Box
+            key={worker.id}
+            sx={{ mb: 2 }}
+          >
             <Typography fontWeight={600}>
               {worker.fullName}
             </Typography>
@@ -642,40 +918,55 @@ function AttendanceRegister() {
 
             <Typography
               fontWeight={700}
-              sx={{ color: "#1b5e20" }}
+              sx={{
+                color: "#1b5e20"
+              }}
             >
               {money(worker.payable)}
             </Typography>
-            {expenses.some(
-  (expense) =>
-    String(expense.id) === `wage-${worker.id}-${month}`
-) ? (
-  <Chip
-    label="Paid"
-    color="success"
-    size="small"
-    sx={{ mt: 1 }}
-  />
-) : (
-  isAdmin &&
-  worker.payable > 0 && (
-    <Button
-      variant="contained"
-      size="small"
-      onClick={() => handlePayWages(worker)}
-      sx={{
-        mt: 1,
-        bgcolor: "#1b5e20",
-        textTransform: "none",
-        "&:hover": {
-          bgcolor: "#12451a"
-        }
-      }}
-    >
-      Pay Wages
-    </Button>
-  )
-)}
+
+            {/* PAY WAGES / PAID STATUS */}
+
+            {expensesReady ? (
+              isWagePaid(worker) ? (
+                <Chip
+                  label="Paid"
+                  color="success"
+                  size="small"
+                  sx={{ mt: 1 }}
+                />
+              ) : (
+                isAdmin &&
+                Number(worker.payable) > 0 && (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    disabled={payingWages}
+                    onClick={() =>
+                      handlePayWages(worker)
+                    }
+                    sx={{
+                      mt: 1,
+                      bgcolor: "#1b5e20",
+                      textTransform: "none",
+                      "&:hover": {
+                        bgcolor: "#12451a"
+                      }
+                    }}
+                  >
+                    {payingWages
+                      ? "Processing..."
+                      : "Pay Wages"}
+                  </Button>
+                )
+              )
+            ) : (
+              <Chip
+                label="Checking payments..."
+                size="small"
+                sx={{ mt: 1 }}
+              />
+            )}
 
             <Divider sx={{ mt: 1.5 }} />
           </Box>

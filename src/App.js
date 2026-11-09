@@ -1,16 +1,20 @@
-import {
-  AppBar,
-  Toolbar,
-  Typography,
-  Button,
-  Box,
-  Container
-} from "@mui/material";
 
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faWheatAwn } from "@fortawesome/free-solid-svg-icons";
+import { useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { Box, Container } from "@mui/material";
+
+import {
+  Routes,
+  Route,
+  Navigate,
+  useLocation,
+  useNavigate
+} from "react-router-dom";
+
+import SidebarLayout from "./components/SidebarLayout";
 
 import Dashboard from "./components/Dashboard";
+import DashboardExtras from "./components/DashboardExtras";
 import Crops from "./components/Crops";
 import Buyers from "./components/Buyers";
 import OrderForm from "./components/OrderForm";
@@ -20,6 +24,13 @@ import SupplierOrders from "./components/SupplierOrders";
 import Tasks from "./components/Tasks";
 import Expenses from "./components/Expenses";
 import Inventory from "./components/Inventory";
+import Workers from "./components/Workers";
+import Equipment from "./components/Equipment";
+import ProfitLoss from "./components/ProfitLoss";
+import Reports from "./components/Reports";
+
+import LoginForm from "./components/auth/LoginForm";
+import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 import {
   setCrops as saveCropsToRedux
@@ -32,73 +43,262 @@ import {
 
 import {
   addOrder as addOrderToRedux,
-  markDelivered as markDeliveredInRedux
+  markDelivered as markDeliveredInRedux,
+  setOrders as setOrdersFromDatabase
 } from "./store/reducers/ordersReducer";
 
 import {
-  Routes,
-  Route,
-  Navigate,
-  useNavigate,
-  useLocation
-} from "react-router-dom";
+  setExpensesFromDatabase
+} from "./store/reducers/expensesReducer";
 
 import {
-  useSelector,
-  useDispatch
-} from "react-redux";
+  setActivityFromDatabase
+} from "./store/reducers/activityReducer";
 
-import LoginForm from "./components/auth/LoginForm";
-import ProtectedRoute from "./components/auth/ProtectedRoute";
 import { logout } from "./store/reducers/authReducer";
-import ProfitLoss from "./components/ProfitLoss";
-import Reports from "./components/Reports";
-import Workers from "./components/Workers";
-import Equipment from "./components/Equipment";
-import DashboardExtras from "./components/DashboardExtras";
+
+const API = "http://localhost:5000";
+
+function getSession() {
+  try {
+    return JSON.parse(
+      localStorage.getItem("agri_session") || "{}"
+    );
+  } catch {
+    return {};
+  }
+}
 
 function MainWebsite() {
-
   const dispatch = useDispatch();
   const navigate = useNavigate();
-
-  const role = useSelector(
-    (state) => state.auth.role
-  );
-
-  const handleLogout = () => {
-    dispatch(logout());
-    navigate("/login", { replace: true });
-  };
-
-
-
   const location = useLocation();
 
-const page =
-  location.pathname.split("/")[1] || "dashboard";
+  const role = useSelector((state) => state.auth.role);
+  const crops = useSelector((state) => state.crops);
+  const buyers = useSelector((state) => state.buyers);
+  const orders = useSelector((state) => state.orders);
+
+  const page =
+    location.pathname.split("/")[1] || "dashboard";
 
 
-  const crops = useSelector(
-    (state) => state.crops
-  );
+  useEffect(() => {
+    const session = getSession();
 
-  const setCrops = (updatedCrops) => {
+    if (!session.token) return;
 
-    const newCrops =
+    let mounted = true;
+
+    const loadData = async (
+      endpoint,
+      reduxAction,
+      format = (rows) => rows
+    ) => {
+      try {
+        const response = await fetch(
+          `${API}/api/${endpoint}`,
+          {
+            headers: {
+              Authorization: `Bearer ${session.token}`
+            }
+          }
+        );
+
+        const result = await response.json();
+
+        if (!response.ok || !result.succeeded) {
+          throw new Error(
+            result.message ||
+            `Failed to load ${endpoint}`
+          );
+        }
+
+        const records = Array.isArray(result.data)
+          ? result.data
+          : [];
+
+        if (mounted) {
+          dispatch(reduxAction(format(records)));
+        }
+      } catch (error) {
+        console.error(
+          `${endpoint} API error:`,
+          error.message
+        );
+      }
+    };
+
+    loadData("crops", saveCropsToRedux);
+    loadData("buyers", saveBuyersToRedux);
+
+    loadData(
+      "orders",
+      setOrdersFromDatabase,
+      (records) =>
+        records.map((order) => ({
+          ...order,
+          name: order.Buyer?.name || "",
+          crop: order.Crop?.name || "",
+          field: order.Crop?.field || "",
+          pricePerKg: Number(order.pricePerKg || 0),
+          totalAmount: Number(order.totalAmount || 0),
+          quantity: Number(order.quantity || 0)
+        }))
+    );
+
+    loadData(
+      "expenses",
+      setExpensesFromDatabase,
+      (records) =>
+        records.map((expense) => ({
+          ...expense,
+          amount: Number(expense.amount || 0)
+        }))
+    );
+
+    loadData(
+      "activities",
+      setActivityFromDatabase
+    );
+
+    return () => {
+      mounted = false;
+    };
+  }, [dispatch]);
+
+
+  const setCrops = async (updatedCrops) => {
+    const nextCrops =
       typeof updatedCrops === "function"
         ? updatedCrops(crops)
         : updatedCrops;
 
-    dispatch(saveCropsToRedux(newCrops));
+    if (!Array.isArray(nextCrops)) return;
+
+    const added = nextCrops.find(
+      (item) => !crops.some(
+        (old) => String(old.id) === String(item.id)
+      )
+    );
+
+    const removed = crops.find(
+      (item) => !nextCrops.some(
+        (current) => String(current.id) === String(item.id)
+      )
+    );
+
+    const edited = nextCrops.find((item) => {
+      const old = crops.find(
+        (c) => String(c.id) === String(item.id)
+      );
+
+      return old && [
+        "name", "field", "cuttingDate",
+        "healthScore", "harvestQty"
+      ].some(
+        (key) => String(old[key] ?? "") !==
+                 String(item[key] ?? "")
+      );
+    });
+
+    if (!added && !removed && !edited) return;
+
+    try {
+      const session = JSON.parse(
+        localStorage.getItem("agri_session") || "{}"
+      );
+
+      if (!session.token) {
+        throw new Error("Login session missing.");
+      }
+
+      const base = "http://localhost:5000/api/crops";
+
+      const method = added
+        ? "POST"
+        : removed
+          ? "DELETE"
+          : "PUT";
+
+      const url = added
+        ? base
+        : `${base}/${removed ? removed.id : edited.id}`;
+
+      let payload = added || edited;
+
+      if (added) {
+        const {
+          id,
+          createdAt,
+          updatedAt,
+          createdBy,
+          ...clean
+        } = added;
+
+        payload = clean;
+      }
+
+      if (payload) {
+        const score = Number(payload.healthScore);
+
+        payload = {
+          ...payload,
+          healthScore: score,
+          harvestQty: Number(payload.harvestQty),
+          status: score >= 80
+            ? "Healthy"
+            : score >= 50
+              ? "Needs Attention"
+              : "Critical"
+        };
+      }
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${session.token}`,
+          "Content-Type": "application/json"
+        },
+        ...(method !== "DELETE"
+          ? { body: JSON.stringify(payload) }
+          : {})
+      });
+
+      const result = await response.json();
+
+      if (
+        !response.ok ||
+        !result.succeeded ||
+        (method !== "DELETE" && !result.data?.id)
+      ) {
+        throw new Error(
+          result.message || "Request failed."
+        );
+      }
+
+      const savedCrops = added
+        ? [...crops, result.data]
+        : removed
+          ? crops.filter(
+              (c) => String(c.id) !== String(removed.id)
+            )
+          : crops.map(
+              (c) => String(c.id) === String(edited.id)
+                ? result.data
+                : c
+            );
+
+      dispatch(saveCropsToRedux(savedCrops));
+
+    } catch (error) {
+      window.alert(
+        "Crop database save failed: " + error.message
+      );
+    }
   };
 
-  const buyers = useSelector(
-    (state) => state.buyers
-  );
-
   const setBuyers = (updatedBuyers) => {
-
     const newBuyers =
       typeof updatedBuyers === "function"
         ? updatedBuyers(buyers)
@@ -107,376 +307,191 @@ const page =
     dispatch(saveBuyersToRedux(newBuyers));
   };
 
-  const orders = useSelector(
-    (state) => state.orders
-  );
-
-
   const addOrder = (newOrder) => {
     dispatch(addOrderToRedux(newOrder));
   };
 
+  const markDelivered = async (id) => {
+    if (role !== "Admin") return;
 
-  const markDelivered = (id) => {
+    try {
+      const session = getSession();
 
-    if (role !== "Admin") {
-      return;
+      const response = await fetch(
+        `${API}/api/orders/${id}`,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.token}`
+          },
+          body: JSON.stringify({
+            status: "Delivered"
+          })
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.succeeded) {
+        throw new Error(
+          result.message || "Update failed"
+        );
+      }
+
+      dispatch(markDeliveredInRedux(id));
+    } catch (error) {
+      alert(
+        "Order update failed: " + error.message
+      );
+    }
+  };
+
+  const saveBuyer = async (newBuyer) => {
+    const session = getSession();
+
+    const response = await fetch(
+      `${API}/api/buyers`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.token}`
+        },
+        body: JSON.stringify({
+          ...newBuyer,
+          id: undefined
+        })
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok || !result.succeeded) {
+      throw new Error(
+        result.message || "Buyer save failed"
+      );
     }
 
-    dispatch(markDeliveredInRedux(id));
+    dispatch(addBuyerToRedux(result.data));
+
+    return result.data;
   };
 
-
-
-  const saveBuyer = (newBuyer) => {
-    dispatch(addBuyerToRedux(newBuyer));
+  const handleLogout = () => {
+    dispatch(logout());
+    navigate("/login", { replace: true });
   };
 
-
-
-  const navItems = [
-    { label: "Dashboard", value: "dashboard" },
-    { label: "Crops", value: "crops" },
-    { label: "Buyers", value: "buyers" },
-    { label: "Place Order", value: "place-order" },
-    { label: "Harvest & Orders", value: "orders" },
-    { label: "Farm Tasks", value: "tasks" },
-    { label: "Expenses", value: "expenses" },
-    { label: "Inventory", value: "inventory" },
-    { label: "Workers", value: "workers" },
-    { label: "Equipment", value: "equipment" },
-     { label: "Profit & Loss", value: "profit-loss" },
-     { label: "Reports", value: "reports" },
-
-  ];
-
+  // -----------------------------------------
+  // ORIGINAL PAGE CONTENT INSIDE NEW LAYOUT
+  // -----------------------------------------
 
   return (
-
-    <Box
-      sx={{
-        backgroundColor: "#f4f8f4",
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column"
-      }}
+    <SidebarLayout
+      role={role}
+      onLogout={handleLogout}
     >
-
-      <AppBar
-        position="static"
-        elevation={0}
-        sx={{
-          backgroundColor: "#1b5e20",
-          borderBottom: "1px solid rgba(255,255,255,0.12)"
-        }}
-      >
-
-        <Toolbar
-          sx={{
-            minHeight: 72,
-            px: { xs: 2, md: 3 },
-            py: 1,
-            gap: 2,
-            flexWrap: "wrap"
-          }}
-        >
-
-      
-
-          <Typography
-            variant="h6"
-            sx={{
-              flexGrow: 1,
-              fontWeight: 700,
-              fontSize: 21,
-              minWidth: 210,
-              letterSpacing: "-0.3px",
-              display: "flex",
-              alignItems: "center"
-            }}
-          >
-
-            <FontAwesomeIcon
-              icon={faWheatAwn}
-              style={{
-                marginRight: 12,
-                fontSize: 23
-              }}
-            />
-
-            AgriVista Ventures
-
-          </Typography>
-
-
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: 0.5
-            }}
-          >
-
-            {navItems.map((item) => (
-
-              <Button
-                key={item.value}
-                color="inherit"
-                onClick={() => navigate(`/${item.value}`)}
-                sx={{
-                  textTransform: "none",
-                  fontSize: 14,
-
-                  fontWeight:
-                    page === item.value ? 700 : 500,
-
-                  backgroundColor:
-                    page === item.value
-                      ? "rgba(255,255,255,0.14)"
-                      : "transparent",
-
-                  borderRadius: 2,
-                  px: 1.8,
-                  py: 1,
-
-                  "&:hover": {
-                    backgroundColor:
-                      "rgba(255,255,255,0.12)"
-                  }
-                }}
-              >
-                {item.label}
-              </Button>
-
-            ))}
-
-
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 1.5,
-                ml: { xs: 0, md: 1.5 },
-                pl: { xs: 1, md: 2 },
-                borderLeft:
-                  "1px solid rgba(255,255,255,0.25)"
-              }}
-            >
-
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 1
-                }}
-              >
-
-                <Box
-                  sx={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: "50%",
-                    backgroundColor: "#a5d6a7"
-                  }}
-                />
-
-                <Typography
-                  sx={{
-                    color: "#e8f5e9",
-                    fontSize: 14,
-                    fontWeight: 600
-                  }}
-                >
-                  {role || "User"}
-                </Typography>
-
-              </Box>
-
-
-              <Button
-                color="inherit"
-                onClick={handleLogout}
-                sx={{
-                  textTransform: "none",
-                  fontSize: 13,
-                  fontWeight: 600,
-                  px: 2,
-                  py: 0.8,
-                  minWidth: "auto",
-                  borderRadius: 2,
-
-                  border:
-                    "1px solid rgba(255,255,255,0.35)",
-
-                  "&:hover": {
-                    backgroundColor:
-                      "rgba(255,255,255,0.12)"
-                  }
-                }}
-              >
-                Log out
-              </Button>
-
-            </Box>
-
-          </Box>
-
-        </Toolbar>
-
-      </AppBar>
-
-
-
-      <Box sx={{ flexGrow: 1 }}>
-
-
-       {page === "dashboard" && (
-  <>
-    <Dashboard
-      crops={crops}
-      orders={orders}
-    />
-<DashboardExtras
-  onOpenEquipment={() => navigate("/equipment")}
-/>
-  </>
-)}
-
-        {page === "crops" && (
-          <Crops
-            crops={crops}
-            setCrops={setCrops}
-          />
-        )}
-
-
-        {page === "buyers" && (
-          <Buyers
-            buyers={buyers}
-            onSaveBuyer={saveBuyer}
-            setBuyers={setBuyers}
-          />
-        )}
-
-
-        {page === "place-order" && (
-          <OrderForm
-            buyers={buyers}
+      {page === "dashboard" && (
+        <>
+          <Dashboard
             crops={crops}
             orders={orders}
-            onAddOrder={addOrder}
           />
-        )}
 
+          <DashboardExtras
+            onOpenEquipment={() =>
+              navigate("/equipment")
+            }
+          />
+        </>
+      )}
 
-        {page === "tasks" && (
-          <Tasks />
-        )}
+      {page === "crops" && (
+        <Crops
+          crops={crops}
+          setCrops={setCrops}
+        />
+      )}
 
+      {page === "buyers" && (
+        <Buyers
+          buyers={buyers}
+          onSaveBuyer={saveBuyer}
+          setBuyers={setBuyers}
+        />
+      )}
 
-        {page === "expenses" && (
-          <Expenses />
-        )}
+      {page === "place-order" && (
+        <OrderForm
+          buyers={buyers}
+          crops={crops}
+          orders={orders}
+          onAddOrder={addOrder}
+        />
+      )}
 
+      {page === "tasks" && <Tasks />}
 
-        {page === "inventory" && (
-          <Inventory />
-        )}
-       {page === "profit-loss" && (
-        <ProfitLoss />
-        )}
+      {page === "expenses" && <Expenses />}
 
-       {page === "reports" && (
-         <Reports />
-        )}
-        {page === "workers" && (
-  <Workers />
-)}
-{page === "equipment" && (
-  <Equipment />
-)}
+      {page === "inventory" && <Inventory />}
 
+      {page === "workers" && <Workers />}
 
-        {page === "orders" && (
+      {page === "equipment" && <Equipment />}
 
-          <Container
-            maxWidth="xl"
-            sx={{
-              py: 4,
-              px: { xs: 2, md: 4 }
-            }}
-          >
+      {page === "profit-loss" && <ProfitLoss />}
 
-            <HarvestSummary
-              crops={crops}
-              buyers={buyers}
+      {page === "reports" && <Reports />}
+
+      {page === "orders" && (
+        <Container
+          maxWidth="xl"
+          sx={{
+            py: 4,
+            px: { xs: 2, md: 4 }
+          }}
+        >
+          <HarvestSummary
+            crops={crops}
+            buyers={buyers}
+            orders={orders}
+          />
+
+          <CuttingSchedule crops={crops} />
+
+          <Box sx={{ mt: 3 }}>
+            <SupplierOrders
               orders={orders}
+              onMarkDelivered={markDelivered}
             />
-
-            <CuttingSchedule crops={crops} />
-
-            <Box
-              sx={{
-                width: "100%",
-                mt: 3
-              }}
-            >
-              <SupplierOrders
-                orders={orders}
-                onMarkDelivered={markDelivered}
-              />
-            </Box>
-
-          </Container>
-
-        )}
-
-      </Box>
-
-
-      <Box
-        component="footer"
-        sx={{
-          backgroundColor: "#1b5e20",
-          color: "white",
-          textAlign: "center",
-          py: 3,
-          mt: 4
-        }}
-      >
-
-        <Typography variant="body2">
-          © 2026 AgriVista Ventures
-        </Typography>
-
-        <Typography variant="caption">
-          Smart Farming & Crop Management
-        </Typography>
-
-      </Box>
-
-    </Box>
+          </Box>
+        </Container>
+      )}
+    </SidebarLayout>
   );
 }
 
 
-function App() {
-
+export default function App() {
   const isAuthenticated = useSelector(
     (state) => state.auth.isAuthenticated
   );
 
   return (
-
     <Routes>
-
       <Route
         path="/login"
         element={
-          isAuthenticated
-            ? <Navigate to="/dashboard" replace />
-            : <LoginForm />
+          isAuthenticated ? (
+            <Navigate
+              to="/dashboard"
+              replace
+            />
+          ) : (
+            <LoginForm />
+          )
         }
       />
 
@@ -488,10 +503,6 @@ function App() {
           </ProtectedRoute>
         }
       />
-
     </Routes>
-
   );
 }
-
-export default App;

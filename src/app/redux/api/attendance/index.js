@@ -1,141 +1,132 @@
-import {
-  KEYS,
-  ok,
-  bad,
-  uid,
-  storageApi
-} from "../index";
 
-const validStatuses = [
-  "Present",
-  "Absent",
-  "Half-day",
-  "Leave"
-];
+const API = "http://localhost:5000/api/attendance";
 
-export async function getAttendance() {
-  return storageApi.getList(KEYS.attendance);
+function getToken() {
+  try {
+    const session = JSON.parse(
+      localStorage.getItem("agri_session") || "{}"
+    );
+
+    return session.token || "";
+  } catch {
+    return "";
+  }
 }
+async function attendanceRequest(
+  path = "",
+  method = "GET",
+  data = undefined
+) {
+  const token = getToken();
 
-export async function markAttendance(data) {
-  const response = await getAttendance();
-
-  if (!response.data.succeeded) {
-    return response;
+  if (!token) {
+    throw new Error(
+      "Login session missing. Please login again."
+    );
   }
 
-  const records = response.data.data;
+  let response;
+
+  try {
+    response = await fetch(`${API}${path}`, {
+      method,
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      ...(data !== undefined
+        ? { body: JSON.stringify(data) }
+        : {})
+    });
+  } catch {
+    throw new Error(
+      "Cannot connect to backend on port 5000."
+    );
+  }
+
+  const result = await response
+    .json()
+    .catch(() => null);
+
+  if (!response.ok || !result) {
+    throw new Error(
+      result?.message ||
+      `Attendance request failed (${response.status})`
+    );
+  }
+
+  // Redux actions expect response.data
+  return {
+    data: result
+  };
+}
+
+export async function getAttendance() {
+  return attendanceRequest();
+}
+
+
+export async function markAttendance(data) {
+  const validStatuses = [
+    "Present",
+    "Absent",
+    "Half-day",
+    "Leave"
+  ];
 
   if (!data.workerId || !data.date) {
-    return bad("Select worker and date.");
+    throw new Error(
+      "Please select a worker and date."
+    );
   }
 
   if (!validStatuses.includes(data.status)) {
-    return bad("Select a valid attendance status.");
+    throw new Error(
+      "Please select a valid attendance status."
+    );
   }
 
-  const duplicate = records.some(
-    (record) =>
-      String(record.workerId) === String(data.workerId) &&
-      record.date === data.date
-  );
-
-  if (duplicate) {
-    return bad("Attendance already marked for this date.");
-  }
-
-  const newRecord = {
-    id: uid(),
+  const payload = {
     workerId: data.workerId,
     date: data.date,
     status: data.status,
     note: data.note || ""
   };
 
-  const saved = await storageApi.saveList(
-    KEYS.attendance,
-    [...records, newRecord]
+  return attendanceRequest(
+    "",
+    "POST",
+    payload
   );
-
-  return saved.data.succeeded
-    ? ok(newRecord, "Attendance marked successfully.")
-    : saved;
 }
 
+
 export async function updateAttendance(data) {
-  const response = await getAttendance();
-
-  if (!response.data.succeeded) {
-    return response;
+  if (!data.id) {
+    throw new Error(
+      "Attendance record ID is missing."
+    );
   }
 
-  const records = response.data.data;
+  const { id, ...payload } = data;
 
-  if (!validStatuses.includes(data.status)) {
-    return bad("Invalid attendance status.");
-  }
-
-  const existing = records.find(
-    (record) => record.id === data.id
+  return attendanceRequest(
+    `/${encodeURIComponent(id)}`,
+    "PUT",
+    payload
   );
-
-  if (!existing) {
-    return bad("Attendance record not found.");
-  }
-
-  const updated = {
-    ...existing,
-    ...data
-  };
-
-  const duplicate = records.some(
-    (record) =>
-      record.id !== data.id &&
-      String(record.workerId) === String(updated.workerId) &&
-      record.date === updated.date
-  );
-
-  if (duplicate) {
-    return bad("Attendance already exists for this worker and date.");
-  }
-
-  const updatedRecords = records.map((record) =>
-    record.id === data.id ? updated : record
-  );
-
-  const saved = await storageApi.saveList(
-    KEYS.attendance,
-    updatedRecords
-  );
-
-  return saved.data.succeeded
-    ? ok(updated, "Attendance updated successfully.")
-    : saved;
 }
 
 export async function removeAttendance(id) {
-  const response = await getAttendance();
-
-  if (!response.data.succeeded) {
-    return response;
+  if (!id) {
+    throw new Error(
+      "Attendance record ID is missing."
+    );
   }
 
-  const records = response.data.data;
-
-  if (!records.some((record) => record.id === id)) {
-    return bad("Attendance record not found.");
-  }
-
-  const updatedRecords = records.filter(
-    (record) => record.id !== id
+  return attendanceRequest(
+    `/${encodeURIComponent(id)}`,
+    "DELETE"
   );
-
-  const saved = await storageApi.saveList(
-    KEYS.attendance,
-    updatedRecords
-  );
-
-  return saved.data.succeeded
-    ? ok({ id }, "Attendance deleted successfully.")
-    : saved;
 }
