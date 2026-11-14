@@ -12,44 +12,6 @@ const safe = (user) => ({
   role: user.role,
 });
 
-// SIGNUP
-exports.register = async (req, res) => {
-  try {
-    const { fullName, username, email, password } = req.body;
-
-    if (!fullName || !username || !email || !password) {
-      return fail(res, "All fields are required");
-    }
-
-    if (password.length < 6) {
-      return fail(res, "Password must be at least 6 characters");
-    }
-
-    const exists = await User.findOne({
-      where: {
-        [Op.or]: [{ username }, { email }],
-      },
-    });
-
-    if (exists) {
-      return fail(res, "Username or email already exists", 409);
-    }
-
-    const user = await User.create({
-      fullName,
-      username,
-      email,
-      password,
-      role: "manager",
-    });
-
-    return ok(res, safe(user), "Account created successfully", 201);
-
-  } catch (error) {
-    return fail(res, error.errors?.[0]?.message || error.message, 500);
-  }
-};
-
 // LOGIN
 exports.login = async (req, res) => {
   try {
@@ -127,22 +89,52 @@ exports.getUser = async (req, res) => {
   }
 };
 
-// CREATE USER - ADMIN
+// CREATE/REGISTER USER - ADMIN
+// The User Sequelize model automatically hashes the password in its beforeCreate hook.
+// Do not hash the password here again (that would lead to double hashing).
 exports.createUser = async (req, res) => {
   try {
-    const { fullName, username, email, password, role } = req.body;
+    const body = req.body || {};
+    const fullName = typeof body.fullName === "string" ? body.fullName.trim() : "";
+    const username = typeof body.username === "string" ? body.username.trim() : "";
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    const role = body.role || "manager";
 
-    const user = await User.create({
-      fullName,
-      username,
-      email,
-      password,
-      role,
+    if (!fullName || !username || !email || !password) {
+      return fail(res, "Name, username, email and password are required", 400);
+    }
+    if (password.length < 8) {
+      return fail(res, "Password must be at least 8 characters", 400);
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return fail(res, "Enter a valid email address", 400);
+    }
+    if (!["admin", "manager"].includes(role)) {
+      return fail(res, "Invalid user role", 400);
+    }
+    if (fullName.length > 80 || username.length > 40 || email.length > 120) {
+      return fail(res, "One or more fields exceed allowed length", 400);
+    }
+
+    const exists = await User.findOne({
+      where: { [Op.or]: [{ username }, { email }] },
     });
+    if (exists) {
+      return fail(res, "Username or email already exists", 409);
+    }
 
-    return ok(res, safe(user), "User created", 201);
+    const user = await User.create({ fullName, username, email, password, role });
+    return ok(res, safe(user), "User registered successfully", 201);
   } catch (error) {
-    return fail(res, error.errors?.[0]?.message || error.message);
+    if (error.name === "SequelizeUniqueConstraintError") {
+      return fail(res, "Username or email already exists", 409);
+    }
+    if (error.name === "SequelizeValidationError") {
+      return fail(res, error.errors?.[0]?.message || "Invalid user data", 400);
+    }
+    console.error("User registration failed:", error);
+    return fail(res, "Could not register user", 500);
   }
 };
 
@@ -195,3 +187,5 @@ exports.removeUser = async (req, res) => {
     return fail(res, error.message, 500);
   }
 };
+// Backward-compatible alias; both routes require admin middleware.
+exports.register = exports.createUser;

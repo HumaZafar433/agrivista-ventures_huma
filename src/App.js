@@ -28,6 +28,7 @@ import Workers from "./components/Workers";
 import Equipment from "./components/Equipment";
 import ProfitLoss from "./components/ProfitLoss";
 import Reports from "./components/Reports";
+import UserManagement from "./components/UserManagement";
 
 import LoginForm from "./components/auth/LoginForm";
 import ProtectedRoute from "./components/auth/ProtectedRoute";
@@ -444,6 +445,10 @@ function MainWebsite() {
       {page === "profit-loss" && <ProfitLoss />}
 
       {page === "reports" && <Reports />}
+
+      {page === "users" && (
+        role === "Admin" ? <UserManagement /> : <Navigate to="/dashboard" replace />
+      )}
 
       {page === "orders" && (
         <Container

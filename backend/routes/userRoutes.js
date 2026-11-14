@@ -19,8 +19,10 @@ const loginLimiter = rateLimit({
   },
 });
 
-// Public Routes
-router.post("/register", userController.register);
+// New registrations: Admin only (server-side authorization)
+router.post("/register", protect, authorize("admin"), userController.createUser);
+
+// Public login only
 
 router.post("/login", loginLimiter, userController.login);
 

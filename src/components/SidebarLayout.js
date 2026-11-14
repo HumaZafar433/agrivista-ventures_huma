@@ -59,6 +59,12 @@ const GROUPS = [
     ]
   },
   {
+    title: "ADMINISTRATION",
+    items: [
+      { label: "User Registration", path: "users", icon: faUserGroup, adminOnly: true }
+    ]
+  },
+  {
     title: "ANALYTICS",
     items: [
       { label: "Profit & Loss", path: "profit-loss", icon: faChartLine },
@@ -143,7 +149,10 @@ function SidebarContent({
       )}
 
       <nav className="av-sidebar__nav" aria-label="Main navigation">
-        {GROUPS.map((group) => (
+        {GROUPS.map((group) => ({
+          ...group,
+          items: group.items.filter((item) => !item.adminOnly || role === "Admin")
+        })).filter((group) => group.items.length > 0).map((group) => (
           <section className="av-sidebar__group" key={group.title}>
             {compact ? (
               <div className="av-sidebar__group-divider" />
